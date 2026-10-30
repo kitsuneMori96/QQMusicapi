@@ -69,6 +69,7 @@ function createApp(options = {}) {
   let loginHtmlCache = null;
   root.get("/", (ctx) => {
     ctx.type = "text/html; charset=utf-8";
+    ctx.set("Cache-Control", "no-store");
     if (!indexHtmlCache) {
       indexHtmlCache = existsSync(INDEX_HTML_PATH)
         ? readFileSync(INDEX_HTML_PATH, "utf-8")
@@ -78,6 +79,7 @@ function createApp(options = {}) {
   });
   root.get("/login", (ctx) => {
     ctx.type = "text/html; charset=utf-8";
+    ctx.set("Cache-Control", "no-store");
     if (!loginHtmlCache) {
       loginHtmlCache = existsSync(LOGIN_HTML_PATH)
         ? readFileSync(LOGIN_HTML_PATH, "utf-8")
