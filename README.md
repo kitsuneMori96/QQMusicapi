@@ -62,6 +62,38 @@ npm run help
 | `--open` | `OPEN_BROWSER` | 关闭 | 启动后尝试打开浏览器 |
 | - | `QQMUSIC_DEBUG` | - | 设为 `1` 时输出 check_sig 等调试日志 |
 
+### 开发者模式
+
+功能开发时让服务在文件变更后自动重启：
+
+```bash
+npm run dev          # node --watch，改代码即重启
+npm run dev:open     # 同上，并在启动时打开浏览器
+```
+
+前台运行时 `Ctrl+C` 优雅退出。调试签名等细节可设 `QQMUSIC_DEBUG=1 npm run dev`。
+
+### qqm 管理脚本
+
+`qqm` 是本地安装的服务管理脚本（位于 `~/.local/bin/qqm`），把服务作为后台常驻进程管理，pid 与日志存放在 `$XDG_RUNTIME_DIR/qqm/`，不会污染项目目录：
+
+```bash
+qqm                    # 后台启动并等待端口就绪（若已运行则提示）
+qqm start -- --port 3400   # 启动，`--` 后参数透传给 src/server.js
+qqm stop               # 优雅停止（SIGTERM，12s 超时后强杀）
+qqm restart            # 重启；restart -- <参数> 同 start
+qqm status             # 进程状态 + 监听地址 + /health 探测
+qqm logs               # 查看最近 50 行日志
+qqm logs -f            # 实时跟随日志
+qqm logs 200           # 查看最近 200 行
+qqm fg                 # 前台运行（Ctrl+C 退出），适合临时调试
+qqm help               # 用法说明
+```
+
+环境变量：`QQM_PROJECT` 覆盖项目路径（默认 `~/projects/QQMusicapi`），`QQM_RUNTIME` 覆盖 pid/日志目录。
+
+> 注意：`qqm` 与 `npm run dev` 都监听同一端口，切换前先停掉另一个，避免 `EADDRINUSE`。
+
 ### 常驻部署
 
 ```bash
