@@ -65,28 +65,26 @@ function createApp(options = {}) {
   const PUBLIC_DIR = join(__dirname, "public");
   const INDEX_HTML_PATH = join(PUBLIC_DIR, "index.html");
   const LOGIN_HTML_PATH = join(PUBLIC_DIR, "login.html");
-  let indexHtmlCache = null;
-  let loginHtmlCache = null;
-  root.get("/", (ctx) => {
+  const serveHtml = (ctx, htmlPath, missing) => {
     ctx.type = "text/html; charset=utf-8";
+    // 每次现读: 前端改动无需重启; 浏览器侧禁缓存, 避免旧页面 JS 与新接口不一致
     ctx.set("Cache-Control", "no-store");
-    if (!indexHtmlCache) {
-      indexHtmlCache = existsSync(INDEX_HTML_PATH)
-        ? readFileSync(INDEX_HTML_PATH, "utf-8")
-        : "<h1>QQ Music API</h1><p>index.html not found at " + INDEX_HTML_PATH + "</p>";
-    }
-    ctx.body = indexHtmlCache;
-  });
-  root.get("/login", (ctx) => {
-    ctx.type = "text/html; charset=utf-8";
-    ctx.set("Cache-Control", "no-store");
-    if (!loginHtmlCache) {
-      loginHtmlCache = existsSync(LOGIN_HTML_PATH)
-        ? readFileSync(LOGIN_HTML_PATH, "utf-8")
-        : "<h1>QQ Music Login</h1><p>login.html not found at " + LOGIN_HTML_PATH + "</p>";
-    }
-    ctx.body = loginHtmlCache;
-  });
+    ctx.body = existsSync(htmlPath) ? readFileSync(htmlPath, "utf-8") : missing;
+  };
+  root.get("/", (ctx) =>
+    serveHtml(
+      ctx,
+      INDEX_HTML_PATH,
+      "<h1>QQ Music API</h1><p>index.html not found at " + INDEX_HTML_PATH + "</p>",
+    ),
+  );
+  root.get("/login", (ctx) =>
+    serveHtml(
+      ctx,
+      LOGIN_HTML_PATH,
+      "<h1>QQ Music Login</h1><p>login.html not found at " + LOGIN_HTML_PATH + "</p>",
+    ),
+  );
   app.use(root.routes());
 
   // 5. 业务路由

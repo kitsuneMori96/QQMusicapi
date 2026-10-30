@@ -382,6 +382,7 @@
       <input id="urlInput" type="text" placeholder="粘贴歌曲链接 (例如 https://y.qq.com/n/ryqq_v2/songDetail/002kR3lm1nTxkV) 或直接输入 songmid" />
       <button id="parseBtn">解析</button>
       <span class="hint">支持 17 种音质</span>
+      <span class="hint" id="buildMark" data-build="2026-10-31a">页面 2026-10-31a</span>
     </div>
 
     <!-- 歌曲信息 -->
@@ -481,24 +482,49 @@
       return "";
     }
 
-    async function api(path) {
-      const r = await fetch(path);
-      const j = await r.json();
+    async function api(path, timeoutMs = 20000) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      let r;
+      try {
+        r = await fetch(path, { signal: ctrl.signal });
+      } catch (e) {
+        throw new Error(e.name === "AbortError" ? `请求超时 (${timeoutMs / 1000}s): ${path}` : `网络错误: ${e.message}`);
+      } finally {
+        clearTimeout(timer);
+      }
+      const text = await r.text();
+      let j;
+      try {
+        j = JSON.parse(text);
+      } catch {
+        throw new Error(`响应不是 JSON (HTTP ${r.status}): ${text.slice(0, 80)}`);
+      }
       if (j.code !== 0) throw new Error(j.message || `code ${j.code}`);
       return j.data;
     }
 
     async function checkStatus() {
       try {
-        const d = await api("/health");
+        const d = await api("/health", 5000);
         $("statusDot").className = "status-dot online";
         $("statusText").textContent = "服务在线";
         $("loginMeta").textContent = d.loggedIn ? `已登录: ${d.musicid}` : "未登录";
+        const mark = document.getElementById("buildMark");
+        if (mark) mark.textContent = `页面 ${mark.dataset.build} · 服务 v${d.version}`;
       } catch {
         $("statusDot").className = "status-dot offline";
         $("statusText").textContent = "服务离线";
       }
     }
+
+    // 任何未捕获异常都显示出来, 避免「点击无反应」却查不到原因
+    window.addEventListener("error", (ev) => {
+      showError(`页面错误: ${ev.message || "未知异常"}`);
+    });
+    window.addEventListener("unhandledrejection", (ev) => {
+      showError(`异步异常: ${(ev.reason && ev.reason.message) || ev.reason || "未知"}`);
+    });
 
     function hideAll() {
       ["songSection", "qualitySection", "lyricSection", "similarSection", "errorBox"].forEach(id => $(id).classList.add("hidden"));
@@ -535,6 +561,9 @@
         const tasks = [fetchLyric(mid)];
         if (track?.id) tasks.push(fetchSimilar(track.id));
         await Promise.allSettled(tasks);
+      } catch (e) {
+        // 渲染/请求异常必须可见, 否则表现为「点了没反应」
+        showError(`解析失败: ${e && e.message ? e.message : e}`);
       } finally {
         $("parseBtn").disabled = false;
         $("parseBtn").textContent = "解析";
