@@ -9,7 +9,9 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "dev:open": "node --watch src/server.js --open",
+    "help": "node src/server.js --help"
   },
   "keywords": [
     "qqmusic",

@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+*.log
+Dockerfile
+.dockerignore
+device.json
+credential.json

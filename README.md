@@ -26,30 +26,54 @@ npm install
 ### 启动 Web 服务
 
 ```bash
-# 默认监听 3300 端口
+# 默认监听 0.0.0.0:3300
 npm start
 
-# 开发模式
+# 开发模式（文件变更自动重启）
 npm run dev
 
-# 自定义端口与设备路径
-PORT=3000 DEVICE_PATH=./device.json npm start
+# 开发模式并自动打开浏览器
+npm run dev:open
+
+# 命令行参数
+node src/server.js --port 3000 --host 127.0.0.1 --platform web
+
+# 查看全部启动参数
+npm run help
 ```
+
+配置优先级：**命令行参数 > 进程环境变量 > `.env` 文件 > 默认值**。
+复制 `.env.example` 为 `.env` 即可固定本地配置。服务默认绑定 `0.0.0.0`，局域网/容器场景可直接访问；`SIGINT`/`SIGTERM` 触发优雅退出（最长等待 10s）。
 
 启动后访问：
 
 - **首页解析器**：[http://localhost:3300/](http://localhost:3300/) — 粘贴歌曲链接或 songmid，一键获取 17 种音质直链、歌词、相似歌曲，并使用 APlayer 在线试听
 - **登录管理**：[http://localhost:3300/login](http://localhost:3300/login) — 支持 QQ 二维码登录与手机验证码登录，查看当前用户信息
 
-### 环境变量
+### 启动配置一览
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `3300` | 监听端口 |
-| `DEVICE_PATH` | `./device.json` | 设备信息持久化路径 |
-| `CREDENTIAL_PATH` | `./credential.json` | 凭证持久化路径 |
-| `PLATFORM` | `android` | 请求平台：`android` / `desktop` / `web` |
-| `QQMUSIC_DEBUG` | - | 设为 `1` 时输出 check_sig 等调试日志 |
+| 参数 | 环境变量 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `-p, --port` | `PORT` | `3300` | 监听端口 |
+| `-H, --host` | `HOST` | `0.0.0.0` | 监听地址 |
+| `--platform` | `PLATFORM` | `android` | 请求平台：`android` / `desktop` / `web` |
+| `--device` | `DEVICE_PATH` | `./device.json` | 设备信息持久化路径 |
+| `--credential` | `CREDENTIAL_PATH` | `./credential.json` | 凭证持久化路径 |
+| `--open` | `OPEN_BROWSER` | 关闭 | 启动后尝试打开浏览器 |
+| - | `QQMUSIC_DEBUG` | - | 设为 `1` 时输出 check_sig 等调试日志 |
+
+### 常驻部署
+
+```bash
+# Docker
+docker build -t qqmusic-api .
+docker run -d -p 3300:3300 --name qqmusic-api qqmusic-api
+
+# pm2
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
 
 ## 🌐 Web API
 

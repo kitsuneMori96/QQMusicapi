@@ -10,15 +10,15 @@
  *
  * 仅保留 API 路由, 移除静态文件 / Web UI / NO_WEB_UI 开关.
  *
- * 环境变量:
- *   PORT             监听端口 (默认 3300)
- *   DEVICE_PATH      设备信息持久化路径 (默认 ./device.json)
- *   CREDENTIAL_PATH  凭证持久化路径 (默认 ./credential.json)
- *   PLATFORM         请求平台: android / desktop / web (默认 android)
+ * 启动配置统一由 src/config.js 解析 (CLI 参数 > 环境变量 > .env > 默认值),
+ * 运行 `node src/server.js --help` 查看全部选项.
  */
 
+// config.js 必须排在最前: 它会在其他模块加载前开启编译缓存
+import { ConfigError, HELP_TEXT, loadConfig } from "./config.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve, join } from "node:path";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Koa from "koa";
 import bodyParser from "koa-bodyparser";
@@ -533,24 +533,92 @@ function createApp(options = {}) {
 
 // ==================== 启动入口 ====================
 
-const PORT = Number(process.env.PORT ?? 3300);
-const DEVICE_PATH = process.env.DEVICE_PATH ?? "./device.json";
-const CREDENTIAL_PATH = process.env.CREDENTIAL_PATH ?? "./credential.json";
-const PLATFORM_STR = process.env.PLATFORM ?? "android";
-const PLATFORM =
-  PLATFORM_STR === "desktop" ? Platform.DESKTOP :
-  PLATFORM_STR === "web" ? Platform.WEB :
-  Platform.ANDROID;
+const PLATFORM_ENUM = {
+  android: Platform.ANDROID,
+  desktop: Platform.DESKTOP,
+  web: Platform.WEB,
+};
 
-const app = createApp({
-  devicePath: DEVICE_PATH,
-  credentialPath: CREDENTIAL_PATH,
-  platform: PLATFORM,
-});
+function openBrowser(url) {
+  const candidates =
+    process.platform === "win32"
+      ? [["rundll32", ["url.dll,FileProtocolHandler", url]]]
+      : [["xdg-open", [url]], ["wslview", [url]], ["open", [url]]];
+  for (const [cmd, args] of candidates) {
+    try {
+      const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+      child.on("error", () => {});
+      child.unref();
+      return true;
+    } catch {
+      // 尝试下一种方式
+    }
+  }
+  return false;
+}
 
-app.listen(PORT, () => {
-  console.log(`[qqmusic-api] listening on http://localhost:${PORT}`);
-  console.log(`[qqmusic-api] device path     : ${DEVICE_PATH}`);
-  console.log(`[qqmusic-api] credential path : ${CREDENTIAL_PATH}`);
-  console.log(`[qqmusic-api] platform        : ${PLATFORM}`);
-});
+function main() {
+  let config;
+  try {
+    config = loadConfig();
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      console.error(`[qqmusic-api] ${e.message}`);
+      process.exit(1);
+    }
+    throw e;
+  }
+  if (config.help) {
+    console.log(HELP_TEXT);
+    return;
+  }
+
+  const app = createApp({
+    devicePath: config.devicePath,
+    credentialPath: config.credentialPath,
+    platform: PLATFORM_ENUM[config.platform],
+  });
+
+  const server = app.listen(config.port, config.host, () => {
+    const shownHost = config.host === "0.0.0.0" ? "localhost" : config.host;
+    const url = `http://${shownHost}:${config.port}`;
+    console.log(`[qqmusic-api] listening on ${url}`);
+    console.log(`[qqmusic-api] platform        : ${config.platform}`);
+    console.log(`[qqmusic-api] device path     : ${config.devicePath}`);
+    console.log(`[qqmusic-api] credential path : ${config.credentialPath}`);
+    if (!app.store.credential.isLoggedIn()) {
+      console.log(`[qqmusic-api] 提示: 当前未登录, 访问 ${url}/login 扫码登录, 或 PUT /login/credential 写入凭证`);
+    }
+    if (config.open) openBrowser(url);
+  });
+
+  server.on("error", (e) => {
+    if (e.code === "EADDRINUSE") {
+      console.error(`[qqmusic-api] 端口 ${config.port} 已被占用, 请用 --port 指定其他端口`);
+    } else {
+      console.error("[qqmusic-api]", e);
+    }
+    process.exit(1);
+  });
+
+  // 优雅退出: 停止接收新连接, 等待在途请求结束, 超时强制退出
+  let shuttingDown = false;
+  const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[qqmusic-api] 收到 ${signal}, 正在关闭...`);
+    server.close(() => process.exit(0));
+    setTimeout(() => {
+      console.warn("[qqmusic-api] 10s 内未结束在途请求, 强制退出");
+      process.exit(0);
+    }, 10_000).unref();
+  };
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+}
+
+const isMain =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) main();
+
+export { createApp };
