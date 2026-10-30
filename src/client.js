@@ -31,7 +31,10 @@ const MUSICS_URL = "https://u.y.qq.com/cgi-bin/musics.fcg";
 
 export class Client {
   constructor(options = {}) {
-    this.credential = new Credential(options.credential);
+    // 凭证单一来源: 若注入 credentialStore, 以其为准; 否则回退到内部字段
+    // (便于独立使用与测试)。写入走 setter, 有 store 时由 store 承担持久化。
+    this._credentialStore = options.credentialStore ?? null;
+    this._credential = new Credential(options.credential);
     this.platform = options.platform ?? Platform.ANDROID;
     this._deviceStore = new DeviceManager(options.devicePath);
     this._versionPolicy = DEFAULT_VERSION_POLICY;
@@ -83,6 +86,14 @@ export class Client {
       headersTimeout: 30_000,
       connectTimeout: 10_000,
     });
+  }
+
+  get credential() {
+    return this._credentialStore ? this._credentialStore.credential : this._credential;
+  }
+
+  set credential(value) {
+    this._credential = value instanceof Credential ? value : new Credential(value);
   }
 
   get song() {

@@ -29,12 +29,31 @@ export class SongFileType {
 }
 
 const CODE_MAP = {};
+const NAME_MAP = {};
 for (const k of Object.keys(SongFileType)) {
   const v = SongFileType[k];
-  if (v instanceof SongFileType) CODE_MAP[v.code] = v;
+  if (v instanceof SongFileType) {
+    CODE_MAP[v.code] = v;
+    NAME_MAP[k] = v;
+  }
 }
 
 /** 根据 code 字符串还原枚举(找不到时返回 undefined) */
 export function parseSongFileType(code) {
   return CODE_MAP[code];
+}
+
+/**
+ * 宽松解析文件类型: 先按 code(如 "M800") 匹配, 再按枚举名(如 "MP3_320") 匹配.
+ * 找不到返回 undefined, 由调用方决定回退.
+ */
+export function resolveSongFileType(input) {
+  if (input instanceof SongFileType) return input;
+  if (typeof input !== "string") return undefined;
+  return CODE_MAP[input] ?? NAME_MAP[input.toUpperCase()];
+}
+
+/** code -> 扩展名(含点), 未知返回 undefined */
+export function extForCode(code) {
+  return CODE_MAP[code]?.ext;
 }

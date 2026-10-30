@@ -11,7 +11,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "dev:open": "node --watch src/server.js --open",
-    "help": "node src/server.js --help"
+    "help": "node src/server.js --help",
+    "test": "node --test"
   },
   "keywords": [
     "qqmusic",
@@ -23,8 +24,10 @@
   },
   "dependencies": {
     "@koa/router": "^12.0.1",
+    "flac-tagger": "^2.1.0",
     "koa": "^2.15.3",
     "koa-bodyparser": "^4.4.1",
+    "node-id3": "^0.2.9",
     "undici": "^6.19.8"
   }
 }

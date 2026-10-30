@@ -11,7 +11,7 @@
 
 import { ApiModule } from "./base.js";
 import { Platform } from "../versioning.js";
-import { SongFileType, parseSongFileType } from "./song_filetype.js";
+import { SongFileType, parseSongFileType, resolveSongFileType, extForCode } from "./song_filetype.js";
 import { ApiDataError, CredentialInvalidError } from "../exceptions.js";
 
 export class SongApi extends ApiModule {
@@ -82,9 +82,12 @@ export class SongApi extends ApiModule {
       });
     }
     const type =
-      typeof fileType === "string"
-        ? { code: fileType, ext: this._inferExt(fileType) }
-        : fileType;
+      fileType instanceof SongFileType
+        ? fileType
+        : resolveSongFileType(fileType) ??
+          (typeof fileType === "string"
+            ? { code: fileType, ext: extForCode(fileType) ?? ".mp3" }
+            : SongFileType.MP3_128);
     // filename 形如 M500{ mid }{ mid }.mp3, 某些 VIP 音质的 mid 不是 songmid 而是 media_mid
     const filename = mids.map((m) => `${type.code}${m}${m}${type.ext}`);
     const uin = this._client.credential?.strMusicid || this._client.credential?.musicid || "";
@@ -117,19 +120,6 @@ export class SongApi extends ApiModule {
         quality: type.code,
       },
     );
-  }
-
-  /** 根据 quality code 推断文件后缀(用于生成 filename) */
-  _inferExt(code) {
-    const c = code.toUpperCase();
-    if (c === "AI00" || c === "Q000" || c === "Q001" || c === "F000") return ".flac";
-    if (c === "O801" || c === "O800" || c === "O600" || c === "O400") return ".ogg";
-    if (c === "M800" || c === "M500") return ".mp3";
-    if (c === "C600" || c === "C400" || c === "C200") return ".m4a";
-    if (c === "DT03" || c === "D004") return ".mp4";
-    if (c === "Q003") return ".ogg";
-    if (c === "TL01") return ".nac";
-    return ".mp3";
   }
 
   /**
@@ -328,4 +318,9 @@ export class SongApi extends ApiModule {
 }
 
 // 重新导出
-export { SongFileType, parseSongFileType } from "./song_filetype.js";
+export {
+  SongFileType,
+  parseSongFileType,
+  resolveSongFileType,
+  extForCode,
+} from "./song_filetype.js";

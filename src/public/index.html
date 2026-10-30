@@ -591,7 +591,7 @@
           <div class="q-error"></div>
           <div class="q-actions hidden">
             <a class="play" href="#">播放</a>
-            <a class="dl" href="#" target="_blank">下载</a>
+            <a class="dl" href="#">下载</a>
           </div>
         `;
         grid.appendChild(item);
@@ -607,7 +607,9 @@
               item.classList.remove("loading");
               item.classList.add("ok");
               playEl.href = info.url;
-              dlEl.href = info.url;
+              // 下载走服务端代理端点: 按元数据命名 + mp3/flac 内嵌封面/歌词
+              dlEl.href = `/song/download?mid=${encodeURIComponent(mid)}&type=${q.code}`;
+              dlEl.title = "下载到浏览器下载目录（文件名取「标题 - 歌手」，mp3/flac 内嵌封面与歌词）";
               playEl.addEventListener("click", (e) => {
                 e.preventDefault();
                 // 使用 APlayer 播放
