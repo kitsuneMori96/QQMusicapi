@@ -66,3 +66,11 @@ export interface SimilarData {
 
 /** GET /song/relatedSonglist?mid= —— 直接透传上游结构 */
 export type RelatedSonglistData = UnknownRecord;
+
+/** GET /song/resolve?url= —— 分享链接解析结果 (至少含 songmid) */
+export interface ShareResolveData extends UnknownRecord {
+  mid: string;
+  id?: number | string;
+  name?: string;
+  singer?: string;
+}

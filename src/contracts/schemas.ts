@@ -51,6 +51,12 @@ export const SongDownloadQuerySchema = Type.Object({
 });
 export type SongDownloadQuery = Static<typeof SongDownloadQuerySchema>;
 
+export const SongResolveQuerySchema = Type.Object({
+  /** QQ 音乐分享链接 (短链 / playsong / songDetail) */
+  url: nonEmptyString,
+});
+export type SongResolveQuery = Static<typeof SongResolveQuerySchema>;
+
 // ==================== login ====================
 
 export const LoginQrCodeBodySchema = Type.Object({

@@ -51,10 +51,24 @@ function makeSongService() {
   };
 }
 
+function makeShareService() {
+  return {
+    resolve: async (url) => {
+      if (url.includes("bad")) {
+        const err = new Error("分享链接解析失败");
+        err.statusCode = 400;
+        throw err;
+      }
+      return { mid: "0039MnYb0qxYhV", name: "晴天", singer: "周杰伦" };
+    },
+  };
+}
+
 const app = createApp({
   client: makeClient(),
   store: makeStore(),
   songService: makeSongService(),
+  shareService: makeShareService(),
 });
 
 after(async () => {
@@ -97,6 +111,28 @@ describe("HTTP 接口", () => {
     assert.equal(res.statusCode, 200);
     const body = res.json();
     assert.equal(body.data["0039MnYb0qxYhV"].url, "http://example.test/M800");
+  });
+
+  it("/song/resolve 透出解析结果, 缺少 url -> 400", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/song/resolve?url=${encodeURIComponent("https://c6.y.qq.com/base/fcgi-bin/u?__=x")}`,
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.equal(body.code, 0);
+    assert.equal(body.data.mid, "0039MnYb0qxYhV");
+
+    const bad = await app.inject({
+      method: "GET",
+      url: `/song/resolve?url=${encodeURIComponent("https://y.qq.com/bad")}`,
+    });
+    assert.equal(bad.statusCode, 400);
+    assert.equal(bad.json().message, "分享链接解析失败");
+
+    const missing = await app.inject({ method: "GET", url: "/song/resolve" });
+    assert.equal(missing.statusCode, 400);
+    assert.match(missing.json().message, /querystring\.url 必填/);
   });
 
   it("/song/download 设置文件头并回传字节", async () => {

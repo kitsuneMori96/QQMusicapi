@@ -17,6 +17,7 @@ export type {
   LyricData,
   SimilarData,
   RelatedSonglistData,
+  ShareResolveData,
 } from "./song.ts";
 export type {
   QrLoginTypeValue,
@@ -60,6 +61,7 @@ export type {
   SongSimilarQuery,
   SongRelatedQuery,
   SongDownloadQuery,
+  SongResolveQuery,
   LoginQrCodeBody,
   LoginQrCheckBody,
   LoginSendAuthcodeBody,

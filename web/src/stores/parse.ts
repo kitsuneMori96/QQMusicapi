@@ -7,9 +7,10 @@ import {
   getSongLyric,
   getSongSimilar,
   getSongUrl,
+  resolveShareLink,
 } from '@/api/song'
 import type { LyricData, PlayUrlInfo, SongTrack, Track } from '@/api/contracts'
-import { extractMid } from '@/lib/mid'
+import { extractMid, extractShareUrl } from '@/lib/mid'
 import { QUALITIES } from '@/lib/qualities'
 import { useNoticeStore } from './notice'
 
@@ -83,7 +84,9 @@ export const useParseStore = defineStore('parse', () => {
   const resolved = computed(
     () => QUALITIES.filter((q) => qualities.value[q.code]?.status === 'ok').length,
   )
-  const canParse = computed(() => extractMid(input.value) !== '')
+  const canParse = computed(
+    () => extractMid(input.value) !== '' || extractShareUrl(input.value) !== '',
+  )
 
   function reset(): void {
     phase.value = 'idle'
@@ -161,9 +164,13 @@ export const useParseStore = defineStore('parse', () => {
 
   async function parse(): Promise<boolean> {
     const notice = useNoticeStore()
-    const candidate = extractMid(input.value)
-    if (!candidate) {
-      notice.warn('无法识别 songmid', '支持 songDetail 链接 / songmid=参数 / 直接输入 10–20 位 mid')
+    let candidate = extractMid(input.value)
+    const shareUrl = candidate ? '' : extractShareUrl(input.value)
+    if (!candidate && !shareUrl) {
+      notice.warn(
+        '无法识别 songmid',
+        '支持 songDetail 链接 / 分享短链 / songmid=参数 / 直接输入 10–20 位 mid',
+      )
       return false
     }
 
@@ -176,6 +183,24 @@ export const useParseStore = defineStore('parse', () => {
     reset()
     mid.value = candidate
     phase.value = 'parsing'
+
+    // 0) 短链 / playsong 链接先由后端跟随跳转换成 songmid
+    if (!candidate && shareUrl) {
+      try {
+        const resolvedData = await resolveShareLink(shareUrl, signal)
+        if (token !== seq) return false
+        candidate = resolvedData.mid
+        mid.value = candidate
+      } catch (error) {
+        if (token !== seq || isAbortError(error)) return false
+        const message = errText(error)
+        detailError.value = message
+        phase.value = 'error'
+        notice.error('分享链接解析失败', message)
+        return false
+      }
+    }
+
     qualities.value = loadingQualities()
 
     // 1) 详情：失败只置 detailError，不阻断后续

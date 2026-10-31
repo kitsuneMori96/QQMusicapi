@@ -22,6 +22,7 @@ import { Platform } from "./versioning.js";
 import { VERSION } from "./version.js";
 import { CredentialStore } from "./store/credentialStore.js";
 import { SongService } from "./services/songService.js";
+import { ShareService } from "./services/shareService.js";
 import { registerErrorHandler } from "./http/errorHandler.ts";
 import { ok, fail } from "./http/responses.ts";
 import { mountAll } from "./routes/index.ts";
@@ -57,9 +58,15 @@ export interface AppOptions {
   client?: any;
   store?: any;
   songService?: any;
+  shareService?: any;
 }
 
-export type App = FastifyInstance & { client: any; store: any; songService: any };
+export type App = FastifyInstance & {
+  client: any;
+  store: any;
+  songService: any;
+  shareService: any;
+};
 
 export function createApp(options: AppOptions = {}): App {
   // 1. 凭证存储 (单一凭证来源)
@@ -78,6 +85,8 @@ export function createApp(options: AppOptions = {}): App {
   const songService =
     options.songService ??
     new SongService(client, { maxDownloadBytes: options.downloadMaxBytes ?? 0 });
+
+  const shareService = options.shareService ?? new ShareService(client);
 
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 }) as unknown as App;
   registerErrorHandler(app);
@@ -134,7 +143,7 @@ export function createApp(options: AppOptions = {}): App {
   });
 
   // 6. 业务路由
-  mountAll(app, { client, store, songService });
+  mountAll(app, { client, store, songService, shareService });
 
   // 7. 未命中: SPA 深链回退, 其余返回统一 JSON 404
   app.setNotFoundHandler((req, reply) => {
@@ -148,7 +157,7 @@ export function createApp(options: AppOptions = {}): App {
     reply.code(404).send(fail(404, "Not Found"));
   });
 
-  return Object.assign(app, { client, store, songService });
+  return Object.assign(app, { client, store, songService, shareService });
 }
 
 // ==================== 启动入口 ====================

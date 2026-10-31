@@ -1,6 +1,7 @@
 import { ApiError, request } from './http'
 import type {
   LyricData,
+  ShareResolveData,
   SimilarData,
   SongDetailData,
   SongUrlsData,
@@ -34,6 +35,15 @@ export function getSongLyric(
     `/song/lyric?mid=${encodeURIComponent(mid)}&decode=${decode ? '1' : '0'}&format=text`,
     { signal },
   )
+}
+
+/** GET /song/resolve?url= —— 后端跟随 QQ 音乐短链跳转后返回 songmid */
+export function resolveShareLink(url: string, signal?: AbortSignal): Promise<ShareResolveData> {
+  return request<ShareResolveData>(`/song/resolve?url=${encodeURIComponent(url)}`, {
+    signal,
+    // 后端每跳 8s 超时、最多 4 跳，前端整体给 15s
+    timeoutMs: 15_000,
+  })
 }
 
 /** GET /song/similar?songid= —— 需要数字歌曲 id */

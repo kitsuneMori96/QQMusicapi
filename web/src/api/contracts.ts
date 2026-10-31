@@ -15,6 +15,7 @@ export type {
   SongUrlsData,
   LyricData,
   SimilarData,
+  ShareResolveData,
   LoginStatusData,
   CredentialJSON,
   QrCodeData,

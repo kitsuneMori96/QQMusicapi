@@ -12,9 +12,31 @@ function jsonResponse(data: unknown): Response {
   } as unknown as Response
 }
 
-function mockBackend(options: { detailFails?: boolean; allUrlsFail?: boolean } = {}) {
+function mockBackend(
+  options: {
+    detailFails?: boolean
+    allUrlsFail?: boolean
+    resolveFails?: boolean
+    resolveMid?: string
+  } = {},
+) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input)
+    if (url.startsWith('/song/resolve')) {
+      if (options.resolveFails) {
+        return {
+          status: 400,
+          text: async () =>
+            JSON.stringify({ code: 400, message: '该分享链接不指向单曲（可能是歌单或专辑），暂不支持' }),
+        } as unknown as Response
+      }
+      return jsonResponse({
+        mid: options.resolveMid ?? MID,
+        id: 123456,
+        name: '测试曲目',
+        singer: '甲 / 乙',
+      })
+    }
     if (url.startsWith('/song/detail')) {
       if (options.detailFails) {
         return {
@@ -78,6 +100,54 @@ describe('parse store', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(useNoticeStore().items[0]?.level).toBe('warn')
     expect(store.phase).toBe('idle')
+  })
+
+  it('非 QQ 音乐域名的 URL 也不发请求', async () => {
+    const fetchMock = mockBackend()
+    const store = useParseStore()
+    store.input = 'https://example.com/base/fcgi-bin/u?__=x'
+    await store.parse()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(store.phase).toBe('idle')
+  })
+
+  it('c6 分享短链先解析出 mid 再走完整流程', async () => {
+    const fetchMock = mockBackend()
+    const store = useParseStore()
+    store.input = 'https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR'
+    await store.parse()
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+    expect(urls[0]).toContain('/song/resolve?url=')
+    expect(store.canParse).toBe(true)
+    expect(store.mid).toBe(MID)
+    expect(store.phase).toBe('ready')
+    expect(store.track?.name).toBe('测试曲目')
+    expect(store.resolved).toBe(2)
+    expect(store.urlOf('M800')?.url).toContain('M800.flac')
+  })
+
+  it('整段分享文案里的链接同样可用', async () => {
+    mockBackend()
+    const store = useParseStore()
+    store.input = `分享周杰伦的歌曲《晴天》 https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR 快来听`
+    await store.parse()
+    expect(store.mid).toBe(MID)
+    expect(store.phase).toBe('ready')
+  })
+
+  it('分享链接解析失败 -> error 并提示，不再请求详情与直链', async () => {
+    const fetchMock = mockBackend({ resolveFails: true })
+    const store = useParseStore()
+    store.input = 'https://c6.y.qq.com/base/fcgi-bin/u?__=albumshare'
+    await store.parse()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/song/resolve')
+    expect(store.phase).toBe('error')
+    expect(store.mid).toBe('')
+    expect(store.detailError).toContain('不指向单曲')
+    expect(useNoticeStore().items.some((n) => n.level === 'error')).toBe(true)
   })
 
   it('完整解析：详情 / 17 档直链 / 歌词 / 相似', async () => {

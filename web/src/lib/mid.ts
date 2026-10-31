@@ -24,6 +24,27 @@ export function extractMid(input: string): string {
   return ''
 }
 
+const QQ_HOST_RE = /(^|\.)y\.qq\.com$/i
+// 分享文案常以中文标点/表情结尾，URL 正则会把它们带进来
+const TRAILING_PUNCT_RE = /[)\]}>.,;!?，。；！？、）】」』]+$/
+
+/**
+ * 从整段分享文案中提取 QQ 音乐链接（短链 / playsong / songDetail）。
+ * extractMid 取不到 mid 时用它走后端跳转解析；只放行 y.qq.com 域。
+ */
+export function extractShareUrl(input: string): string {
+  const match = String(input ?? '').match(/https?:\/\/[^\s"'<>，。；！？、（）【】「」『』]+/i)
+  if (!match?.[0]) return ''
+
+  try {
+    const url = new URL(match[0].replace(TRAILING_PUNCT_RE, ''))
+    if (!QQ_HOST_RE.test(url.hostname)) return ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
 /** 封面地址：后端只返回 album.mid，封面图由前端按规则拼接 */
 export function coverUrl(albumMid: string | undefined, size = 300): string {
   if (!albumMid) return ''

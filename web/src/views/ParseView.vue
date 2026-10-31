@@ -151,7 +151,7 @@ function selectSimilar(mid: string): void {
           type="text"
           spellcheck="false"
           autocomplete="off"
-          placeholder="粘贴歌曲链接 / songmid= / 直接输入 mid"
+          placeholder="粘贴歌曲链接 / 分享短链 / songmid= / 直接输入 mid"
           aria-keyshortcuts="/"
           @keydown.enter="submit"
         />
@@ -160,7 +160,14 @@ function selectSimilar(mid: string): void {
         </button>
       </div>
       <div class="query__meta">
-        <span class="micro text-faint">识别 mid: {{ extractMid(parse.input) || '—' }}</span>
+        <span class="micro text-faint">
+          识别 mid:
+          {{
+            parse.mid ||
+            extractMid(parse.input) ||
+            (parse.phase === 'parsing' ? '解析分享链接…' : '—')
+          }}
+        </span>
         <span class="micro text-faint">{{ QUALITY_TOTAL }} 种音质</span>
         <span v-if="parse.phase === 'error'" class="micro text-err">{{ parse.detailError }}</span>
         <span class="spacer" />

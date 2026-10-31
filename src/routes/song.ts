@@ -8,12 +8,14 @@ import {
   SongDownloadQuerySchema,
   SongLyricQuerySchema,
   SongRelatedQuerySchema,
+  SongResolveQuerySchema,
   SongSimilarQuerySchema,
   SongUrlsQuerySchema,
   type SongDetailQuery,
   type SongDownloadQuery,
   type SongLyricQuery,
   type SongRelatedQuery,
+  type SongResolveQuery,
   type SongSimilarQuery,
   type SongUrlsQuery,
 } from "../contracts/schemas.ts";
@@ -22,6 +24,7 @@ export function registerSongRoutes(
   app: FastifyInstance,
   client: any,
   songService: any,
+  shareService: any,
 ): void {
   app.get<{ Querystring: SongDetailQuery }>(
     "/song/detail",
@@ -74,6 +77,13 @@ export function registerSongRoutes(
     "/song/relatedSonglist",
     { schema: { querystring: SongRelatedQuerySchema } },
     async (req) => ok(await client.song.getRelatedSonglist(req.query.mid)),
+  );
+
+  // 分享链接 (短链 302 / playsong / songDetail) -> songmid
+  app.get<{ Querystring: SongResolveQuery }>(
+    "/song/resolve",
+    { schema: { querystring: SongResolveQuerySchema } },
+    async (req) => ok(await shareService.resolve(req.query.url)),
   );
 
   // 浏览器代理下载: 按元数据命名 + mp3/flac 内嵌封面/歌词

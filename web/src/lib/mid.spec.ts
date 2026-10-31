@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractMid, formatDuration, coverUrl } from './mid'
+import { extractMid, extractShareUrl, formatDuration, coverUrl } from './mid'
 
 describe('extractMid', () => {
   it('从 songDetail 链接中提取', () => {
@@ -25,6 +25,34 @@ describe('extractMid', () => {
     expect(extractMid('hello world')).toBe('')
     expect(extractMid('abc')).toBe('')
     expect(extractMid('https://y.qq.com/')).toBe('')
+  })
+
+  it('短链与 playsong 不直接给出 mid，交由分享解析', () => {
+    expect(extractMid('https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR')).toBe('')
+    expect(extractMid('https://i.y.qq.com/v8/playsong.html?songid=1761698')).toBe('')
+  })
+})
+
+describe('extractShareUrl', () => {
+  it('识别 c6 短链并保留原始参数', () => {
+    expect(extractShareUrl('https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR')).toBe(
+      'https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR',
+    )
+  })
+
+  it('从整段分享文案里挑出链接', () => {
+    expect(
+      extractShareUrl('分享周杰伦的歌曲《晴天》 https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR '),
+    ).toBe('https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR')
+    expect(extractShareUrl('https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR，快来听')).toBe(
+      'https://c6.y.qq.com/base/fcgi-bin/u?__=rhEMMiIFAphR',
+    )
+  })
+
+  it('只放行 QQ 音乐域名', () => {
+    expect(extractShareUrl('https://example.com/base/fcgi-bin/u?__=x')).toBe('')
+    expect(extractShareUrl('https://qq.com.evil.test/u?__=x')).toBe('')
+    expect(extractShareUrl('hello world')).toBe('')
   })
 })
 
