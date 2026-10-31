@@ -85,6 +85,24 @@ function createApp(options = {}) {
       "<h1>QQ Music Login</h1><p>login.html not found at " + LOGIN_HTML_PATH + "</p>",
     ),
   );
+  // 前端第三方库(APlayer)内置托管: 用户网络常无法访问 jsdelivr
+  const VENDOR_FILES = {
+    "APlayer.min.js": "application/javascript; charset=utf-8",
+    "APlayer.min.css": "text/css; charset=utf-8",
+  };
+  root.get("/vendor/:name", (ctx) => {
+    const name = ctx.params.name;
+    const mime = VENDOR_FILES[name];
+    const path = mime && join(PUBLIC_DIR, "vendor", name);
+    if (!path || !existsSync(path)) {
+      ctx.status = 404;
+      ctx.body = "Not Found";
+      return;
+    }
+    ctx.type = mime;
+    ctx.set("Cache-Control", "public, max-age=604800");
+    ctx.body = readFileSync(path);
+  });
   app.use(root.routes());
 
   // 5. 业务路由

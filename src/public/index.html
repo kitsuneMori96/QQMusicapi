@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>QQ Music 解析</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.css">
+  <link rel="stylesheet" href="/vendor/APlayer.min.css">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -425,7 +425,7 @@
     <div class="error-box hidden" id="errorBox"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.js"></script>
+  <script src="/vendor/APlayer.min.js"></script>
   <script>
     // 17 种音质, 与后端 SongFileType 对应
     const QUALITIES = [
@@ -450,18 +450,31 @@
 
     const $ = (id) => document.getElementById(id);
 
-    // APlayer 实例 + 当前歌曲缓存
-    let ap = new APlayer({
-      container: $("aplayer"),
-      fixed: false,
-      autoplay: true,
-      theme: "#4ea1ff",
-      loop: "one",
-      order: "list",
-      volume: 0.7,
-      listMaxHeight: 80,
-      audio: []
-    });
+    // APlayer 实例 + 当前歌曲缓存. 播放器缺失/初始化失败不能拖垮解析与下载
+    let ap = null;
+    try {
+      if (typeof APlayer !== "undefined") {
+        ap = new APlayer({
+          container: $("aplayer"),
+          fixed: false,
+          autoplay: true,
+          theme: "#4ea1ff",
+          loop: "one",
+          order: "list",
+          volume: 0.7,
+          listMaxHeight: 80,
+          audio: []
+        });
+      }
+    } catch (e) {
+      console.warn("APlayer 初始化失败, 播放器不可用:", e);
+    }
+    if (!ap) {
+      const box = $("aplayer");
+      if (box) {
+        box.innerHTML = '<div style="padding:18px;color:#8b949e;font-size:13px;">播放器组件未加载，解析与下载不受影响</div>';
+      }
+    }
     let currentTrack = null;
 
     // 从链接或纯 mid 中提取 songmid
