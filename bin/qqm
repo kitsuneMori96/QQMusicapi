@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# qqm — 项目启动管理（通用版，随仓库分发）
+#
+# 用法:
+#   qqm                      启动（后台常驻）并等待端口就绪
+#   qqm start [-- 参数...]   同上，参数透传给应用入口
+#   qqm stop                 优雅停止（SIGTERM，超时强杀）
+#   qqm restart [-- 参数...] 重启
+#   qqm status               查看运行状态 + /health 探测
+#   qqm logs [-f] [行数]     查看日志（默认 50 行，-f 跟随）
+#   qqm fg [-- 参数...]      前台运行（Ctrl+C 退出）
+#   qqm where                打印解析后的项目/入口/运行目录
+#
+# 安装到 PATH:
+#   ln -sf "$(pwd)/bin/qqm" ~/.local/bin/qqm
+#
+# 运行文件:
+#   ${QQM_RUNTIME:-${XDG_RUNTIME_DIR:-/tmp}/qqm}/<项目目录名>/server.{pid,log}
+#
+# 环境变量:
+#   QQM_PROJECT  项目目录（默认：本脚本所在仓库的根目录）
+#   QQM_RUNTIME  运行目录（pid/日志），默认见上
+#   PORT/HOST/... 与项目自身的配置约定一致（CLI 参数 > 环境变量 > .env > 默认值）
+
+set -u
+
+die() { echo "qqm: $*" >&2; exit 1; }
+
+# 跟随符号链接定位仓库根目录，安装到 ~/.local/bin 后依然有效
+SELF=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
+REPO=$(cd "$(dirname "$SELF")/.." 2>/dev/null && pwd) || die "无法定位仓库目录"
+PROJECT=${QQM_PROJECT:-$REPO}
+
+[ -d "$PROJECT" ] || die "项目目录不存在: $PROJECT"
+[ -f "$PROJECT/package.json" ] || die "不是 Node 项目（缺少 package.json）: $PROJECT"
+
+# 入口从 package.json 的 main 读取，入口改名不需要改脚本
+ENTRY=$(cd "$PROJECT" && node -p 'require("./package.json").main || "src/index.js"' 2>/dev/null) \
+  || die "读取 package.json 失败"
+[ -f "$PROJECT/$ENTRY" ] || die "找不到入口 $PROJECT/$ENTRY"
+
+RUNTIME=${QQM_RUNTIME:-${XDG_RUNTIME_DIR:-/tmp}/qqm}/$(basename "$PROJECT")
+PIDFILE=$RUNTIME/server.pid
+LOGFILE=$RUNTIME/server.log
+
+running_pid() {
+  [ -f "$PIDFILE" ] || return 1
+  local pid
+  pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+  echo "$pid"
+}
+
+server_url() {
+  grep -oE 'listening on https?://[^ ]+' "$LOGFILE" 2>/dev/null | tail -1 | sed 's/^listening on //'
+}
+
+health() {
+  local url=$1
+  if command -v curl >/dev/null 2>&1; then
+    curl -s -m 3 "$url/health"
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'fetch(process.argv[1]).then(r=>r.text()).then(t=>process.stdout.write(t)).catch(()=>process.exit(1))' "$url/health" 2>/dev/null
+  fi
+}
+
+start_server() {
+  command -v node >/dev/null 2>&1 || die "未找到 node"
+  local pid
+  if pid=$(running_pid); then
+    echo "qqm: 已在运行 (pid $pid) $(server_url)"
+    return 0
+  fi
+  mkdir -p "$RUNTIME" || die "无法创建运行目录: $RUNTIME"
+  rm -f "$PIDFILE"
+  : > "$LOGFILE"
+  # 用 exec 让后台子 shell 直接被 node 替换, $! 即真实服务进程
+  ( cd "$PROJECT" && exec nohup node "$ENTRY" "$@" >>"$LOGFILE" 2>&1 ) &
+  echo $! >"$PIDFILE"
+  pid=$(cat "$PIDFILE")
+
+  # 等待监听日志或进程退出，最多 15s
+  local i
+  for i in $(seq 1 150); do
+    if grep -q 'listening on ' "$LOGFILE" 2>/dev/null; then
+      echo "qqm: 已启动 (pid $pid)"
+      grep 'listening on \|提示:' "$LOGFILE" | sed 's/^/  /'
+      return 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo "qqm: 启动失败" >&2
+      sed 's/^/  /' "$LOGFILE" >&2
+      rm -f "$PIDFILE"
+      return 1
+    fi
+    sleep 0.1
+  done
+  echo "qqm: 进程在跑但 15s 内未见监听日志，请查看: qqm logs" >&2
+  return 1
+}
+
+stop_server() {
+  local pid
+  if ! pid=$(running_pid); then
+    echo "qqm: 未在运行"
+    rm -f "$PIDFILE"
+    return 0
+  fi
+  echo "qqm: 停止中 (pid $pid)..."
+  kill -TERM "$pid" 2>/dev/null
+  local i
+  for i in $(seq 1 120); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "qqm: 12s 未退出，强制结束" >&2
+    kill -KILL "$pid" 2>/dev/null
+  fi
+  rm -f "$PIDFILE"
+  echo "qqm: 已停止"
+}
+
+status_server() {
+  local pid
+  if ! pid=$(running_pid); then
+    echo "qqm: 未运行"
+    return 1
+  fi
+  echo "qqm: 运行中 (pid $pid)"
+  local url
+  url=$(server_url)
+  if [ -n "$url" ]; then
+    echo "  url    : $url"
+    local body
+    body=$(health "$url")
+    if [ -n "$body" ]; then echo "  health : $body"; else echo "  health : 探测失败"; fi
+  else
+    echo "  url    : (日志中暂无 listening 记录)"
+  fi
+  echo "  log    : $LOGFILE"
+}
+
+case "${1:-start}" in
+  start)   shift; [ "${1:-}" = "--" ] && shift; start_server "$@" ;;
+  stop)    stop_server ;;
+  restart) shift; [ "${1:-}" = "--" ] && shift; stop_server; start_server "$@" ;;
+  status)  status_server ;;
+  logs)
+    shift
+    follow=""
+    [ "${1:-}" = "-f" ] && { follow="-f"; shift; }
+    [ -f "$LOGFILE" ] || die "日志不存在: $LOGFILE"
+    tail -n "${1:-50}" $follow "$LOGFILE"
+    ;;
+  fg)      shift; [ "${1:-}" = "--" ] && shift; cd "$PROJECT" && exec node "$ENTRY" "$@" ;;
+  where)   echo "  project: $PROJECT"; echo "  entry  : $PROJECT/$ENTRY"; echo "  runtime: $RUNTIME" ;;
+  -h|--help|help) sed -n '2,26p' "$0" ;;
+  *)       die "未知命令: $1（可用: start stop restart status logs fg where）" ;;
+esac

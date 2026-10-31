@@ -93,11 +93,16 @@ cd web && npm install && npm run dev
 
 ### qqm 管理脚本
 
-`qqm` 是本地安装的服务管理脚本（位于 `~/.local/bin/qqm`），把服务作为后台常驻进程管理，pid 与日志存放在 `$XDG_RUNTIME_DIR/qqm/`，不会污染项目目录：
+`bin/qqm` 是随仓库分发的通用启动管理脚本：把服务作为后台常驻进程管理，pid 与日志存放在 `$XDG_RUNTIME_DIR/qqm/<项目目录名>/`，不会污染项目目录。
+
+```bash
+# 安装到 PATH（软链即可；脚本按真实路径定位仓库，移到别处也能解析到本项目）
+ln -sf "$(pwd)/bin/qqm" ~/.local/bin/qqm
+```
 
 ```bash
 qqm                    # 后台启动并等待端口就绪（若已运行则提示）
-qqm start -- --port 3400   # 启动，`--` 后参数透传给 src/server.ts
+qqm start -- --port 3400   # 启动，`--` 后参数透传给应用入口
 qqm stop               # 优雅停止（SIGTERM，12s 超时后强杀）
 qqm restart            # 重启；restart -- <参数> 同 start
 qqm status             # 进程状态 + 监听地址 + /health 探测
@@ -105,10 +110,13 @@ qqm logs               # 查看最近 50 行日志
 qqm logs -f            # 实时跟随日志
 qqm logs 200           # 查看最近 200 行
 qqm fg                 # 前台运行（Ctrl+C 退出），适合临时调试
+qqm where              # 打印解析后的项目 / 入口 / 运行目录
 qqm help               # 用法说明
 ```
 
-环境变量：`QQM_PROJECT` 覆盖项目路径（默认 `~/projects/QQMusicapi`），`QQM_RUNTIME` 覆盖 pid/日志目录。
+通用性来源：项目根目录按脚本真实位置推导，入口从 `package.json` 的 `main` 读取，运行目录按项目名隔离，监听地址从启动日志解析后做 `/health` 探测。换仓库或改名都不需要改脚本。
+
+环境变量：`QQM_PROJECT` 覆盖项目路径（默认脚本所在仓库），`QQM_RUNTIME` 覆盖 pid/日志根目录。
 
 > 注意：`qqm` 与 `npm run dev` 都监听同一端口，切换前先停掉另一个，避免 `EADDRINUSE`。
 
@@ -303,6 +311,7 @@ src/
 ├── version.js           # 版本号 (透出到 /health)
 └── versioning.js        # 平台版本策略
 web/                     # Vue 3 + Vite 前端 (解析页 / 登录页 / Pinia / APlayer)
+bin/qqm                  # 通用启动管理脚本 (后台常驻 / 日志 / 健康探测)
 test/                    # node:test 单元/集成测试 (npm test)
 .github/workflows/       # CI: 后端 typecheck + 测试, 前端 typecheck + 测试 + 构建
 ```
