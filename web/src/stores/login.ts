@@ -45,7 +45,7 @@ export const QR_HINT: Record<QrEvent, string> = {
   CONF: '已确认，正在授权…',
   DONE: '登录成功',
   REFUSE: '已拒绝登录',
-  TIMEOUT: '二维码已过期，请刷新',
+  TIMEOUT: '二维码已过期，正在自动刷新…',
   ERROR: '轮询失败',
 }
 
@@ -53,6 +53,12 @@ export const QR_HINT: Record<QrEvent, string> = {
 export const QR_POLL_INTERVAL_MS = 2000
 /** 验证码倒计时秒数 */
 export const AUTHCODE_COUNTDOWN_S = 60
+/** QQ 二维码有效期（秒）；到期或服务端报 TIMEOUT 后自动换新码 */
+export const QR_TTL_S = 120
+/** 过期后自动刷新的延迟，留一点时间让用户看到「已过期」状态 */
+export const QR_AUTO_REFRESH_DELAY_MS = 1500
+
+export type PhoneTone = '' | 'ok' | 'warn' | 'err'
 
 function errText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -86,6 +92,7 @@ export const useLoginStore = defineStore('login', () => {
   const identifier = ref('')
   const qrError = ref('')
   const qrPolling = ref(false)
+  const qrRemaining = ref(0)
 
   // 手机登录
   const countryCode = ref('86')
@@ -95,19 +102,34 @@ export const useLoginStore = defineStore('login', () => {
   const sendingCode = ref(false)
   const phoneBusy = ref(false)
   const phoneMessage = ref('')
+  const phoneMessageTone = ref<PhoneTone>('')
 
   // 凭证操作
   const credentialBusy = ref(false)
 
   const timers = new Set<ReturnType<typeof setInterval>>()
+  const timeouts = new Set<ReturnType<typeof setTimeout>>()
   let qrPollTimer: ReturnType<typeof setInterval> | null = null
   let countdownTimer: ReturnType<typeof setInterval> | null = null
+  let qrTtlTimer: ReturnType<typeof setInterval> | null = null
+  let qrRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   const qrBusy = computed(() => qrEvent.value === 'LOADING')
+  const normalizedCountryCode = computed(() => countryCode.value.replace(/\D/g, '') || '86')
+  const phoneValid = computed(() =>
+    normalizedCountryCode.value === '86'
+      ? /^\d{11}$/.test(phone.value.trim())
+      : /^\d{5,15}$/.test(phone.value.trim()),
+  )
   const canSendCode = computed(
-    () => phone.value.trim().length > 0 && countdown.value === 0 && !sendingCode.value,
+    () => phoneValid.value && countdown.value === 0 && !sendingCode.value,
   )
   const loggedIn = computed(() => Boolean(session.value?.loggedIn))
+
+  function phoneHint(text: string, tone: PhoneTone): void {
+    phoneMessage.value = text
+    phoneMessageTone.value = tone
+  }
 
   function track(timer: ReturnType<typeof setInterval>): ReturnType<typeof setInterval> {
     timers.add(timer)
@@ -122,6 +144,12 @@ export const useLoginStore = defineStore('login', () => {
   function clearTimers(): void {
     for (const timer of timers) clearInterval(timer)
     timers.clear()
+    for (const timeout of timeouts) clearTimeout(timeout)
+    timeouts.clear()
+    qrPollTimer = null
+    countdownTimer = null
+    qrTtlTimer = null
+    qrRefreshTimer = null
   }
 
   // ==================== 会话 / 用户 ====================
@@ -165,9 +193,52 @@ export const useLoginStore = defineStore('login', () => {
     }
   }
 
+  function stopQrTtl(): void {
+    if (qrTtlTimer) {
+      untrack(qrTtlTimer)
+      qrTtlTimer = null
+    }
+    qrRemaining.value = 0
+  }
+
+  function cancelQrRefresh(): void {
+    if (qrRefreshTimer) {
+      clearTimeout(qrRefreshTimer)
+      timeouts.delete(qrRefreshTimer)
+      qrRefreshTimer = null
+    }
+  }
+
+  /** 到期/超时后延迟换一张新码；已登录则不再打扰 */
+  function scheduleQrRefresh(delay = QR_AUTO_REFRESH_DELAY_MS): void {
+    cancelQrRefresh()
+    qrRefreshTimer = setTimeout(() => {
+      if (qrRefreshTimer) timeouts.delete(qrRefreshTimer)
+      qrRefreshTimer = null
+      if (!loggedIn.value) void loadQr()
+    }, delay)
+    timeouts.add(qrRefreshTimer)
+  }
+
+  function startQrTtl(): void {
+    stopQrTtl()
+    qrRemaining.value = QR_TTL_S
+    qrTtlTimer = track(
+      setInterval(() => {
+        qrRemaining.value -= 1
+        if (qrRemaining.value <= 0) {
+          stopQrTtl()
+          scheduleQrRefresh()
+        }
+      }, 1000),
+    )
+  }
+
   /** 停止轮询并清空二维码（切换账号 / 离开页面时调用） */
   function resetQr(): void {
     stopQrPoll()
+    stopQrTtl()
+    cancelQrRefresh()
     qrEvent.value = 'IDLE'
     qrImageUrl.value = ''
     identifier.value = ''
@@ -184,6 +255,7 @@ export const useLoginStore = defineStore('login', () => {
       qrImageUrl.value = `data:${data.mime};base64,${data.data}`
       qrEvent.value = 'WAIT'
       startQrPoll()
+      startQrTtl()
     } catch (error) {
       qrEvent.value = 'ERROR'
       qrError.value = errText(error)
@@ -205,13 +277,21 @@ export const useLoginStore = defineStore('login', () => {
       qrEvent.value = next
       if (next === 'DONE') {
         stopQrPoll()
+        stopQrTtl()
+        cancelQrRefresh()
         notice.success('登录成功')
         await refreshStatus()
-      } else if (next === 'REFUSE' || next === 'TIMEOUT' || next === 'ERROR') {
+      } else if (next === 'TIMEOUT') {
         stopQrPoll()
+        stopQrTtl()
+        scheduleQrRefresh()
+      } else if (next === 'REFUSE' || next === 'ERROR') {
+        stopQrPoll()
+        stopQrTtl()
       }
     } catch (error) {
       stopQrPoll()
+      stopQrTtl()
       qrEvent.value = 'ERROR'
       qrError.value = errText(error)
     } finally {
@@ -243,53 +323,61 @@ export const useLoginStore = defineStore('login', () => {
   }
 
   async function sendCode(): Promise<void> {
-    const phoneNumber = phone.value.trim()
-    if (!phoneNumber) {
-      phoneMessage.value = '请输入手机号'
+    if (!phoneValid.value) {
+      phoneHint(
+        normalizedCountryCode.value === '86' ? '请输入 11 位手机号' : '请输入有效手机号',
+        'err',
+      )
       return
     }
+    const phoneNumber = phone.value.trim()
     sendingCode.value = true
-    phoneMessage.value = ''
+    phoneHint('', '')
     try {
-      const data = await postSendAuthcode(phoneNumber, Number(countryCode.value) || 86)
+      const data = await postSendAuthcode(phoneNumber, Number(normalizedCountryCode.value) || 86)
       if (data.event === 'SEND') {
-        phoneMessage.value = '验证码已发送，请查收短信'
+        phoneHint('验证码已发送，请查收短信', 'ok')
         notice.success('验证码已发送')
         startCountdown(AUTHCODE_COUNTDOWN_S)
       } else if (data.event === 'CAPTCHA') {
-        phoneMessage.value = '需要人机验证，暂不支持'
+        phoneHint('需要人机验证，暂不支持', 'warn')
       } else {
-        phoneMessage.value = '发送过于频繁，请稍后再试'
+        phoneHint('发送过于频繁，请稍后再试', 'warn')
         startCountdown(30)
       }
     } catch (error) {
-      phoneMessage.value = `发送失败: ${errText(error)}`
+      phoneHint(`发送失败: ${errText(error)}`, 'err')
     } finally {
       sendingCode.value = false
     }
   }
 
   async function loginByPhone(): Promise<void> {
-    const phoneNumber = phone.value.trim()
-    const code = authcode.value.trim()
-    if (!phoneNumber) {
-      phoneMessage.value = '请输入手机号'
+    if (!phoneValid.value) {
+      phoneHint(
+        normalizedCountryCode.value === '86' ? '请输入 11 位手机号' : '请输入有效手机号',
+        'err',
+      )
       return
     }
-    if (!code) {
-      phoneMessage.value = '请输入验证码'
+    const code = authcode.value.trim()
+    if (!/^\d{6}$/.test(code)) {
+      phoneHint('请输入 6 位验证码', 'err')
       return
     }
     phoneBusy.value = true
-    phoneMessage.value = ''
+    phoneHint('', '')
     try {
-      await postPhoneLogin(phoneNumber, code)
+      await postPhoneLogin(phone.value.trim(), code)
       notice.success('登录成功')
+      phoneHint('登录成功', 'ok')
       qrEvent.value = 'DONE'
       stopQrPoll()
+      stopQrTtl()
+      cancelQrRefresh()
       await refreshStatus()
     } catch (error) {
-      phoneMessage.value = `登录失败: ${errText(error)}`
+      phoneHint(`登录失败: ${errText(error)}`, 'err')
     } finally {
       phoneBusy.value = false
     }
@@ -340,6 +428,7 @@ export const useLoginStore = defineStore('login', () => {
     identifier,
     qrError,
     qrPolling,
+    qrRemaining,
     countryCode,
     phone,
     authcode,
@@ -347,8 +436,10 @@ export const useLoginStore = defineStore('login', () => {
     sendingCode,
     phoneBusy,
     phoneMessage,
+    phoneMessageTone,
     credentialBusy,
     qrBusy,
+    phoneValid,
     canSendCode,
     loggedIn,
     clearTimers,

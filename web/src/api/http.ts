@@ -34,6 +34,22 @@ export function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+/** 上游「凭证失效 / 未登录」类错误码（后端会映射为 HTTP 401）。 */
+const AUTH_ERROR_CODES = new Set([1000, 104400, 104401, 110001])
+
+export function isAuthError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || AUTH_ERROR_CODES.has(error.code))
+}
+
+type AuthErrorHandler = (message: string) => void
+
+let authErrorHandler: AuthErrorHandler | null = null
+
+/** 注册全局会话失效回调（由 main.ts 注入提示条 + 状态刷新）。 */
+export function setAuthErrorHandler(handler: AuthErrorHandler | null): void {
+  authErrorHandler = handler
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST'
   body?: unknown
@@ -91,12 +107,15 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (envelope.code !== 0) {
-    throw new ApiError(
+    const error = new ApiError(
       envelope.message || `code ${envelope.code}`,
       envelope.code,
       response.status,
       envelope,
     )
+    // 登录流程自身的 401 不算「会话失效」，避免在登录页反复弹提示
+    if (isAuthError(error) && !path.startsWith('/login/')) authErrorHandler?.(error.message)
+    throw error
   }
 
   return (envelope as Extract<ApiEnvelope<T>, { code: 0 }>).data

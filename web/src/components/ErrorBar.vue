@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import { useNoticeStore } from '@/stores/notice'
 
 const notices = useNoticeStore()
@@ -11,6 +12,9 @@ const notices = useNoticeStore()
       <div class="notice__body">
         <div class="notice__text">{{ n.text }}</div>
         <div v-if="n.detail" class="notice__detail">{{ n.detail }}</div>
+        <RouterLink v-if="n.action" :to="n.action.to" class="notice__action">
+          {{ n.action.label }}
+        </RouterLink>
       </div>
       <button class="notice__close" aria-label="关闭" @click="notices.dismiss(n.id)">×</button>
     </div>
@@ -95,6 +99,14 @@ const notices = useNoticeStore()
   font-size: var(--fs-label);
   color: var(--text-faint);
   overflow-wrap: anywhere;
+}
+
+.notice__action {
+  display: inline-block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  color: var(--blue);
 }
 
 .notice__close {

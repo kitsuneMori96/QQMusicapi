@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import StatusBar from './StatusBar.vue'
 import ErrorBar from './ErrorBar.vue'
@@ -8,7 +8,11 @@ import { useStatusStore } from '@/stores/status'
 const status = useStatusStore()
 
 onMounted(() => {
-  void status.refresh()
+  status.start()
+})
+
+onBeforeUnmount(() => {
+  status.stop()
 })
 </script>
 

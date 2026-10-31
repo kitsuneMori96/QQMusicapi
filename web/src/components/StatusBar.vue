@@ -62,8 +62,9 @@ const loginText = computed(() => {
     </span>
 
     <span class="statusbar__cell statusbar__cell--end">
-      <span class="label">探测</span>
+      <span class="label" title="每 30s 自动探测；离线时退避重试，回到前台立即探测">探测</span>
       <span class="statusbar__value mono-num">{{ checkedAt }}</span>
+      <span v-if="status.polling" class="micro text-faint">AUTO</span>
       <button class="statusbar__btn" :disabled="status.phase === 'checking'" @click="status.refresh()">
         重试
       </button>

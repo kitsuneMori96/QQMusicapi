@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { AUTHCODE_COUNTDOWN_S, QR_POLL_INTERVAL_MS, useLoginStore } from './login'
+import {
+  AUTHCODE_COUNTDOWN_S,
+  QR_AUTO_REFRESH_DELAY_MS,
+  QR_POLL_INTERVAL_MS,
+  QR_TTL_S,
+  useLoginStore,
+} from './login'
 
 interface MockState {
   qrEvents: number[]
@@ -47,6 +53,8 @@ describe('login store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.unstubAllGlobals()
+    // 重置 fake clock，丢弃上个用例遗留的轮询/倒计时
+    vi.useRealTimers()
     vi.useFakeTimers()
   })
 
@@ -74,17 +82,36 @@ describe('login store', () => {
     ).toBe(pollsAfterDone)
   })
 
-  it('超时事件停止轮询并给出提示文案', async () => {
-    const { fetchMock } = mockApi({ qrEvents: [4], sendEvent: 'SEND' })
+  it('超时事件停止轮询，随后自动换新码', async () => {
+    const { fetchMock } = mockApi({ qrEvents: [4, 1], sendEvent: 'SEND' })
     const store = useLoginStore()
 
     await store.loadQr()
     await vi.advanceTimersByTimeAsync(QR_POLL_INTERVAL_MS)
     expect(store.qrEvent).toBe('TIMEOUT')
+    expect(store.qrRemaining).toBe(0)
 
-    const before = fetchMock.mock.calls.length
-    await vi.advanceTimersByTimeAsync(QR_POLL_INTERVAL_MS * 3)
-    expect(fetchMock.mock.calls.length).toBe(before)
+    const qrCalls = () =>
+      fetchMock.mock.calls.filter(([u]) => String(u) === '/login/qrcode').length
+    expect(qrCalls()).toBe(1)
+    await vi.advanceTimersByTimeAsync(QR_AUTO_REFRESH_DELAY_MS)
+    expect(qrCalls()).toBe(2)
+    expect(store.qrEvent).toBe('WAIT')
+  })
+
+  it('二维码到期后自动换码并重新计时', async () => {
+    mockApi({ qrEvents: [], sendEvent: 'SEND' })
+    const store = useLoginStore()
+
+    await store.loadQr()
+    expect(store.qrRemaining).toBe(QR_TTL_S)
+
+    await vi.advanceTimersByTimeAsync(QR_TTL_S * 1000)
+    expect(store.qrRemaining).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(QR_AUTO_REFRESH_DELAY_MS)
+    expect(store.qrEvent).toBe('WAIT')
+    expect(store.qrRemaining).toBeGreaterThan(0)
   })
 
   it('二维码获取失败进入 ERROR', async () => {
@@ -123,6 +150,42 @@ describe('login store', () => {
     await store.sendCode()
     expect(store.countdown).toBe(0)
     expect(store.phoneMessage).toContain('人机验证')
+  })
+
+  it('手机号不足 11 位时发码与登录都只给提示不发请求', async () => {
+    const { fetchMock } = mockApi({ qrEvents: [], sendEvent: 'SEND' })
+    const store = useLoginStore()
+    store.phone = '138'
+    store.authcode = '123456'
+
+    await store.sendCode()
+    expect(store.phoneMessageTone).toBe('err')
+    expect(store.phoneMessage).toContain('11 位')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await store.loginByPhone()
+    expect(store.phoneMessageTone).toBe('err')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('验证码不是 6 位时登录前拦截', async () => {
+    const { fetchMock } = mockApi({ qrEvents: [], sendEvent: 'SEND' })
+    const store = useLoginStore()
+    store.phone = '13800138000'
+    store.authcode = '12'
+
+    await store.loginByPhone()
+    expect(store.phoneMessageTone).toBe('err')
+    expect(store.phoneMessage).toContain('6 位')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('发码成功的提示语气为 ok', async () => {
+    mockApi({ qrEvents: [], sendEvent: 'SEND' })
+    const store = useLoginStore()
+    store.phone = '13800138000'
+    await store.sendCode()
+    expect(store.phoneMessageTone).toBe('ok')
   })
 
   it('clearTimers 停止轮询与倒计时', async () => {

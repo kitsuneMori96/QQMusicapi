@@ -3,12 +3,25 @@ import { ref } from 'vue'
 
 export type NoticeLevel = 'info' | 'ok' | 'warn' | 'error'
 
+export interface NoticeAction {
+  label: string
+  to: string
+}
+
 export interface Notice {
   id: number
   level: NoticeLevel
   text: string
   detail?: string
+  action?: NoticeAction
+  /** 相同 key 的通知合并，避免批量请求同时失败时刷屏 */
+  key?: string
   at: number
+}
+
+export interface NoticeOptions {
+  key?: string
+  action?: NoticeAction
 }
 
 let seq = 0
@@ -30,9 +43,25 @@ export const useNoticeStore = defineStore('notice', () => {
     items.value = items.value.filter((n) => n.id !== id)
   }
 
-  function push(level: NoticeLevel, text: string, detail?: string): number {
+  function push(
+    level: NoticeLevel,
+    text: string,
+    detail?: string,
+    options: NoticeOptions = {},
+  ): number {
+    if (options.key) {
+      const existing = items.value.find((n) => n.key === options.key)
+      if (existing) {
+        existing.detail = detail
+        existing.at = Date.now()
+        return existing.id
+      }
+    }
     const id = ++seq
-    items.value = [...items.value, { id, level, text, detail, at: Date.now() }].slice(-5)
+    items.value = [
+      ...items.value,
+      { id, level, text, detail, action: options.action, key: options.key, at: Date.now() },
+    ].slice(-5)
     if (level !== 'error') {
       timers.set(
         id,
@@ -42,10 +71,14 @@ export const useNoticeStore = defineStore('notice', () => {
     return id
   }
 
-  const info = (text: string, detail?: string) => push('info', text, detail)
-  const success = (text: string, detail?: string) => push('ok', text, detail)
-  const warn = (text: string, detail?: string) => push('warn', text, detail)
-  const error = (text: string, detail?: string) => push('error', text, detail)
+  const info = (text: string, detail?: string, options?: NoticeOptions) =>
+    push('info', text, detail, options)
+  const success = (text: string, detail?: string, options?: NoticeOptions) =>
+    push('ok', text, detail, options)
+  const warn = (text: string, detail?: string, options?: NoticeOptions) =>
+    push('warn', text, detail, options)
+  const error = (text: string, detail?: string, options?: NoticeOptions) =>
+    push('error', text, detail, options)
 
   function clear(): void {
     for (const timer of timers.values()) clearTimeout(timer)

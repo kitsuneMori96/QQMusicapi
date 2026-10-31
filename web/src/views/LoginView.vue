@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { QR_HINT, useLoginStore } from '@/stores/login'
 import UserCard from '@/components/UserCard.vue'
 
 const login = useLoginStore()
+
+const confirmingLogout = ref(false)
 
 const qrClass = computed(() => {
   switch (login.qrEvent) {
@@ -25,15 +27,61 @@ const qrHint = computed(() => (login.qrError && login.qrEvent === 'ERROR' ? `获
 
 const actionsBusy = computed(() => login.credentialBusy || login.sessionLoading)
 
-function confirmLogout(): void {
-  if (!window.confirm('确定要退出登录吗？')) return
-  void login.logout()
+/** 输入即清洗：手机号/验证码/国码只留数字，避免粘贴带空格或连字符 */
+const phoneModel = computed({
+  get: () => login.phone,
+  set: (value: string) => {
+    login.phone = value.replace(/\D/g, '').slice(0, 15)
+  },
+})
+
+const authcodeModel = computed({
+  get: () => login.authcode,
+  set: (value: string) => {
+    login.authcode = value.replace(/\D/g, '').slice(0, 6)
+  },
+})
+
+const countryModel = computed({
+  get: () => login.countryCode,
+  set: (value: string) => {
+    login.countryCode = value.replace(/\D/g, '').slice(0, 4)
+  },
+})
+
+const phoneToneClass = computed(() => {
+  switch (login.phoneMessageTone) {
+    case 'err':
+      return 'text-err'
+    case 'ok':
+      return 'text-ok'
+    case 'warn':
+      return 'text-warn'
+    default:
+      return ''
+  }
+})
+
+function askLogout(): void {
+  confirmingLogout.value = true
+}
+
+async function doLogout(): Promise<void> {
+  await login.logout()
+  confirmingLogout.value = false
 }
 
 watch(
   () => login.tab,
   (tab) => {
     if (tab === 'qr' && !login.identifier && !login.loggedIn) void login.loadQr()
+  },
+)
+
+watch(
+  () => login.loggedIn,
+  (value) => {
+    if (!value) confirmingLogout.value = false
   },
 )
 
@@ -87,11 +135,21 @@ onBeforeUnmount(() => {
               刷新凭证
             </button>
             <button
+              v-if="!confirmingLogout"
               class="btn btn--danger"
               :disabled="actionsBusy || !login.loggedIn"
-              @click="confirmLogout"
+              @click="askLogout"
             >
               退出登录
+            </button>
+          </div>
+          <div v-if="confirmingLogout" class="confirm">
+            <span class="micro text-warn">确认退出当前账号？退出后需重新扫码登录。</span>
+            <button class="btn btn--danger" :disabled="login.credentialBusy" @click="doLogout">
+              确认退出
+            </button>
+            <button class="btn" :disabled="login.credentialBusy" @click="confirmingLogout = false">
+              取消
             </button>
           </div>
           <p v-if="login.sessionError" class="micro text-err login__msg">
@@ -152,6 +210,9 @@ onBeforeUnmount(() => {
               <li><span class="text-faint">TIMEOUT</span> 二维码过期，需刷新</li>
             </ol>
             <button class="btn" :disabled="login.qrBusy" @click="login.loadQr()">刷新二维码</button>
+            <p v-if="login.qrRemaining > 0" class="micro mono-num text-faint">
+              剩余 {{ login.qrRemaining }}s，到期自动换码
+            </p>
             <p v-if="login.loggedIn" class="micro text-warn">当前已登录；重新扫码会覆盖现有凭证</p>
             <p v-else class="micro text-faint">每 2s 轮询一次，离开页面自动停止</p>
           </div>
@@ -160,14 +221,33 @@ onBeforeUnmount(() => {
         <div v-else class="panel-body phone">
           <div class="phone__row">
             <span class="label">国码</span>
-            <input v-model="login.countryCode" class="input input--num" inputmode="numeric" />
+            <input v-model="countryModel" class="input input--num" inputmode="numeric" maxlength="4" />
             <span class="label">手机号</span>
-            <input v-model="login.phone" class="input" inputmode="tel" placeholder="11 位手机号" />
+            <input
+              v-model="phoneModel"
+              class="input"
+              inputmode="tel"
+              maxlength="15"
+              placeholder="11 位手机号"
+              @keyup.enter="login.loginByPhone()"
+            />
           </div>
           <div class="phone__row">
             <span class="label">验证码</span>
-            <input v-model="login.authcode" class="input" inputmode="numeric" placeholder="6 位验证码" />
-            <button class="btn" :disabled="!login.canSendCode" @click="login.sendCode()">
+            <input
+              v-model="authcodeModel"
+              class="input"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="6 位验证码"
+              @keyup.enter="login.loginByPhone()"
+            />
+            <button
+              class="btn"
+              :disabled="!login.canSendCode"
+              :title="login.phoneValid ? '发送短信验证码' : '请输入 11 位手机号'"
+              @click="login.sendCode()"
+            >
               {{ login.sendingCode ? '发送中…' : '发送验证码' }}
             </button>
             <span class="micro mono-num text-dim phone__countdown">
@@ -183,7 +263,7 @@ onBeforeUnmount(() => {
               {{ login.phoneBusy ? '登录中…' : '登录' }}
             </button>
           </div>
-          <p v-if="login.phoneMessage" class="micro login__msg" :class="login.phoneMessage.includes('失败') || login.phoneMessage.includes('请输入') ? 'text-err' : 'text-ok'">
+          <p v-if="login.phoneMessage" class="micro login__msg" :class="phoneToneClass">
             {{ login.phoneMessage }}
           </p>
         </div>
@@ -221,6 +301,18 @@ onBeforeUnmount(() => {
   display: flex;
   gap: var(--sp-2);
   margin-top: var(--sp-3);
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid rgb(255 107 107 / 35%);
+  border-radius: var(--radius);
+  background: var(--panel-sunken);
 }
 
 .login__msg {

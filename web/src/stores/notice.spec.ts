@@ -32,4 +32,20 @@ describe('notice store', () => {
     store.dismiss(id)
     expect(store.items).toHaveLength(0)
   })
+
+  it('相同 key 的提示合并为一条并更新详情', () => {
+    const store = useNoticeStore()
+    store.error('登录状态已失效', '凭证已过期', { key: 'auth-expired' })
+    store.error('登录状态已失效', '凭证无效', { key: 'auth-expired' })
+    expect(store.items).toHaveLength(1)
+    expect(store.items[0]?.detail).toBe('凭证无效')
+  })
+
+  it('携带 action 时保留跳转信息', () => {
+    const store = useNoticeStore()
+    store.error('登录状态已失效', '', {
+      action: { label: '去登录', to: '/login' },
+    })
+    expect(store.items[0]?.action).toEqual({ label: '去登录', to: '/login' })
+  })
 })
