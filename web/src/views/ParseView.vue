@@ -98,13 +98,14 @@ function selectSimilar(mid: string): void {
           </div>
         </section>
 
+        <PlayerBar />
+
         <QualityGrid
           :states="parse.qualities"
           :resolved="parse.resolved"
           @play="play"
           @download="download"
         />
-        <PlayerBar />
       </div>
 
       <div class="parse__col">

@@ -80,7 +80,7 @@ function statusText(state: QualityState | undefined): string {
 
 .qrow {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 32px minmax(0, 62px) 52px;
+  grid-template-columns: 40px minmax(64px, 1fr) 30px minmax(0, 1.6fr) 52px;
   align-items: center;
   gap: 4px;
   min-height: 26px;
@@ -171,17 +171,4 @@ function statusText(state: QualityState | undefined): string {
   color: var(--blue);
 }
 
-@media (min-width: 1100px) {
-  .qgrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .qrow:nth-child(odd) {
-    border-right: 1px dashed rgb(42 47 54 / 55%);
-  }
-
-  .qrow:last-child {
-    border-bottom: none;
-  }
-}
 </style>

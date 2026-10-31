@@ -53,6 +53,8 @@ const text = computed(() => props.lyric?.[active.value] ?? '')
       </button>
     </div>
 
+    <p v-if="lyric?.decodeError" class="lyric__decode-err">{{ lyric.decodeError }}</p>
+
     <div class="lyric__box scroll-y">
       <pre v-if="text" class="lyric__text">{{ text }}</pre>
       <p v-else class="empty">{{ loading ? '加载中…' : '尚无歌词' }}</p>
@@ -99,6 +101,15 @@ const text = computed(() => props.lyric?.[active.value] ?? '')
 .lyric__tab:disabled {
   cursor: not-allowed;
   color: var(--line-strong);
+}
+
+.lyric__decode-err {
+  margin: var(--sp-2) var(--sp-3) 0;
+  padding: 2px 6px;
+  border: 1px solid rgb(242 193 78 / 45%);
+  border-radius: var(--radius);
+  font-size: var(--fs-label);
+  color: var(--warn);
 }
 
 .lyric__box {

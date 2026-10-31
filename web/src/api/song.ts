@@ -18,10 +18,11 @@ export function getSongUrl(mid: string, type: string): Promise<SongUrlsData> {
   )
 }
 
-/** GET /song/lyric?mid=&decode= —— 失败不阻断其他面板 */
+/** GET /song/lyric?mid=&decode=&format=text —— 失败不阻断其他面板 */
 export function getSongLyric(mid: string, decode = true): Promise<LyricData> {
+  // format=text：让后端把 QRC XML 转成纯 LRC，前端直接展示
   return request<LyricData>(
-    `/song/lyric?mid=${encodeURIComponent(mid)}&decode=${decode ? '1' : '0'}`,
+    `/song/lyric?mid=${encodeURIComponent(mid)}&decode=${decode ? '1' : '0'}&format=text`,
   )
 }
 
