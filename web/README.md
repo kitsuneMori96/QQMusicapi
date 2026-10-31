@@ -49,13 +49,14 @@ web/
 │  │  ├─ http.ts           # {code,message,data} 信封 + 超时
 │  │  ├─ health.ts         # /health
 │  │  ├─ song.ts           # detail / urls / lyric / similar / download
+│  │  ├─ login.ts          # status / qrcode / checkQrcode / 手机登录 / 凭证
 │  │  └─ contracts.ts      # 唯一出口，import type 自根 src/contracts
 │  ├─ lib/
 │  │  ├─ mid.ts            # songmid 提取 / 封面 / 时长
 │  │  └─ qualities.ts      # 17 种音质目录
 │  ├─ stores/              # status / notice / parse / player / login
 │  ├─ components/          # AppShell StatusBar ErrorBar SongHeader
-│  │                       # QualityGrid LyricPanel SimilarList PlayerBar
+│  │                       # QualityGrid LyricPanel SimilarList PlayerBar UserCard
 │  └─ views/               # ParseView LoginView
 └─ e2e/shell.spec.ts
 ```
@@ -70,8 +71,8 @@ web/
 
 ## 当前状态
 
-已就位：外壳、状态栏（`/health` 探测）、**解析页已接契约**（详情 / 17 音质直链并发探测 / 歌词 / 相似曲目 / 服务端代理下载 / APlayer 播放）、登录页骨架（二维码状态机 UI、手机号表单、会话与用户卡）、APlayer 本地托管与暗色适配及失败降级、Vitest 20 例、Playwright 5 例。
+已就位：外壳、状态栏（`/health` 探测）、解析页（详情 / 17 音质直链并发探测 / 歌词 / 相似曲目 / 服务端代理下载 / APlayer 播放）、登录页（会话状态、二维码 2s 轮询状态机、手机验证码与倒计时、用户卡、凭证刷新/退出）、APlayer 本地托管与暗色适配及失败降级、Vitest 33 例、Playwright 8 例。
 
-待接入（等登录联调通知）：`/login/*` 二维码 2s 轮询、手机登录、用户卡数据、凭证刷新/退出。
+已知差异：`/song/lyric?decode=1` 的 `data.lyric` 是 QRC 原始 XML，展示层需要纯文本（待后端加格式化参数），当前会原样显示。
 
 APlayer 走 `/vendor/APlayer.min.js|css`（本地托管，严禁改回 jsdelivr）。
