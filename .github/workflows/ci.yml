@@ -29,7 +29,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      # web 的类型会透过 ../src/contracts 引用后端依赖（@sinclair/typebox），
+      # 所以前端类型检查前必须先装根目录依赖
+      - run: npm ci
+        working-directory: .
       - run: npm ci
       - run: npm run typecheck
       - run: npm test

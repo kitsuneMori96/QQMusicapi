@@ -90,6 +90,7 @@ cd web && npm install && npm run dev
 - `npm run typecheck`（vue-tsc）、`npm test`（Vitest）、`npm run test:e2e`（Playwright）
 - 构建产物 `web/dist`：`npm run build:web`（根目录执行）。存在时后端直接托管它，`/` 与 `/login` 都回 SPA 的 `index.html`，深链可刷新；不存在时回退旧的 `src/public` 静态页
 - 接口类型统一从 `src/contracts` 以 `import type` 引入，请求参数以后端 TypeBox schema 为准
+- 前端类型检查会沿 import 读到 `src/contracts`（依赖根目录的 `@sinclair/typebox`），所以根目录也要先 `npm install`；CI 已按「根目录 → web」顺序安装
 
 ### qqm 管理脚本
 
