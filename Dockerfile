@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -18,4 +18,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
 
 # 凭证/设备文件写入容器内 /app/*.json; 持久化请挂载卷:
 #   docker run -p 3300:3300 -v qqmusic-cred:/data ...
-CMD ["node", "src/server.js"]
+CMD ["node", "src/server.ts"]

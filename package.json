@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "description": "QQ Music API for Node.js (JavaScript port of L-1124/QQMusicApi)",
   "type": "module",
-  "main": "src/server.js",
+  "main": "src/server.ts",
   "exports": {
-    ".": "./src/server.js"
+    ".": "./src/server.ts"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "dev:open": "node --watch src/server.js --open",
-    "help": "node src/server.js --help",
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "dev:open": "node --watch src/server.ts --open",
+    "help": "node src/server.ts --help",
+    "typecheck": "tsc --noEmit",
+    "build:web": "npm --prefix web run build",
     "test": "node --test"
   },
   "keywords": [
@@ -20,14 +22,18 @@
     "nodejs"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.18"
   },
   "dependencies": {
-    "@koa/router": "^12.0.1",
+    "@fastify/static": "^10.1.8",
+    "@sinclair/typebox": "^0.34.52",
+    "fastify": "^5.12.7",
     "flac-tagger": "^2.1.0",
-    "koa": "^2.15.3",
-    "koa-bodyparser": "^4.4.1",
     "node-id3": "^0.2.9",
     "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
   }
 }

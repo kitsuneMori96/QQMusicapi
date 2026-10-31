@@ -6,7 +6,7 @@ module.exports = {
   apps: [
     {
       name: "qqmusic-api",
-      script: "src/server.js",
+      script: "src/server.ts",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
