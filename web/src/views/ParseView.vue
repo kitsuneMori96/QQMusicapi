@@ -17,6 +17,10 @@ const route = useRoute()
 const router = useRouter()
 
 const pending = computed(() => parse.phase === 'parsing')
+const activeQuality = computed(() =>
+  player.current?.mid === parse.mid ? (player.current?.qualityCode ?? '') : '',
+)
+const seekable = computed(() => Boolean(player.current && player.current.mid === parse.mid))
 
 function queryMid(): string {
   return extractMid(String(route.query.mid ?? ''))
@@ -54,6 +58,15 @@ onMounted(() => {
   void runParse(mid)
 })
 
+// 换歌时停掉旧曲目，避免播放器继续占用已失效的直链
+watch(
+  () => parse.mid,
+  (mid) => {
+    if (!mid || !player.current) return
+    if (player.current.mid !== mid) player.clear()
+  },
+)
+
 function play(quality: Quality): void {
   const info = parse.urlOf(quality.code)
   if (!info?.url) return
@@ -64,6 +77,7 @@ function play(quality: Quality): void {
       .filter(Boolean)
       .join(' / ') || '—'
   player.play({
+    mid: parse.mid,
     name: track?.name || parse.mid,
     artist,
     url: info.url,
@@ -83,6 +97,10 @@ function retry(quality: Quality): void {
 
 function retryFailed(): void {
   void parse.retryFailed()
+}
+
+function seek(seconds: number): void {
+  player.seek(seconds)
 }
 
 function selectSimilar(mid: string): void {
@@ -144,6 +162,8 @@ function selectSimilar(mid: string): void {
           :states="parse.qualities"
           :resolved="parse.resolved"
           :downloading="parse.downloading"
+          :active-code="activeQuality"
+          :playing="player.playing"
           @play="play"
           @download="download"
           @retry="retry"
@@ -152,8 +172,19 @@ function selectSimilar(mid: string): void {
       </div>
 
       <div class="parse__col">
-        <LyricPanel :lyric="parse.lyric" :loading="parse.lyricLoading" />
-        <SimilarList :items="parse.similar" :loading="parse.similarLoading" @select="selectSimilar" />
+        <LyricPanel
+          :lyric="parse.lyric"
+          :loading="parse.lyricLoading"
+          :current-time="seekable ? player.currentTime : -1"
+          :seekable="seekable"
+          @seek="seek"
+        />
+        <SimilarList
+          :items="parse.similar"
+          :loading="parse.similarLoading"
+          :active-mid="parse.mid"
+          @select="selectSimilar"
+        />
       </div>
     </div>
   </div>

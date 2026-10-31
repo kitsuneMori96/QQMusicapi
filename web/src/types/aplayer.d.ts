@@ -5,12 +5,19 @@ export interface APlayerAudio {
   cover?: string
 }
 
+export interface APlayerList {
+  audios: APlayerAudio[]
+  clear(): void
+  add(audios: APlayerAudio[], play?: boolean): void
+  switch(index: number): void
+}
+
 export interface APlayerInstance {
-  list: {
-    clear(): void
-    add(audios: APlayerAudio[], play?: boolean): void
-  }
+  list: APlayerList
+  audio: HTMLAudioElement
   play(): void
+  pause(): void
+  seek(time: number): void
   destroy(): void
 }
 

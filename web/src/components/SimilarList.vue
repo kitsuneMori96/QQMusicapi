@@ -1,12 +1,29 @@
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   items: Array<{ id?: number | string; mid?: string; name?: string; singer?: string }>
   loading?: boolean
+  activeMid?: string
 }>()
 
 const emit = defineEmits<{
   select: [mid: string]
 }>()
+
+function isActive(item: { mid?: string }): boolean {
+  return Boolean(item.mid && item.mid === props.activeMid)
+}
+
+function moveFocus(event: KeyboardEvent, step: number): void {
+  const current = event.currentTarget as HTMLElement
+  const host = current.parentElement
+  if (!host) return
+  const buttons = [
+    ...host.querySelectorAll<HTMLButtonElement>('button.similar__row:not(:disabled)'),
+  ]
+  const index = buttons.indexOf(current as HTMLButtonElement)
+  if (index < 0 || buttons.length === 0) return
+  buttons[(index + step + buttons.length) % buttons.length]?.focus()
+}
 </script>
 
 <template>
@@ -19,19 +36,30 @@ const emit = defineEmits<{
     </div>
 
     <div class="similar__list scroll-y">
+      <template v-if="loading && items.length === 0">
+        <div v-for="n in 3" :key="n" class="similar__row similar__row--skeleton">
+          <span class="similar__idx mono-num">··</span>
+          <span class="skeleton-line" />
+          <span class="skeleton-line skeleton-line--short" />
+        </div>
+      </template>
+
       <button
         v-for="(item, index) in items"
         :key="item.mid ?? item.id ?? index"
         class="similar__row"
-        :disabled="!item.mid"
+        :class="{ 'similar__row--active': isActive(item) }"
+        :disabled="!item.mid || isActive(item)"
         @click="item.mid && emit('select', item.mid)"
+        @keydown.down.prevent="moveFocus($event, 1)"
+        @keydown.up.prevent="moveFocus($event, -1)"
       >
         <span class="similar__idx mono-num">{{ String(index + 1).padStart(2, '0') }}</span>
         <span class="similar__title">{{ item.name || '—' }}</span>
         <span class="similar__singer">{{ item.singer || '—' }}</span>
       </button>
 
-      <p v-if="items.length === 0" class="empty">{{ loading ? '加载中…' : '暂无相似曲目' }}</p>
+      <p v-if="items.length === 0 && !loading" class="empty">暂无相似曲目</p>
     </div>
   </section>
 </template>
@@ -72,6 +100,48 @@ const emit = defineEmits<{
 
 .similar__row:disabled {
   cursor: default;
+}
+
+.similar__row--active {
+  background: rgb(91 157 255 / 8%);
+}
+
+.similar__row--active .similar__title,
+.similar__row--active .similar__idx {
+  color: var(--blue);
+}
+
+.similar__row--skeleton {
+  cursor: default;
+}
+
+.skeleton-line {
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--line) 25%, var(--line-strong) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s linear infinite;
+}
+
+.skeleton-line--short {
+  width: 60%;
+  justify-self: end;
+}
+
+@keyframes skeleton {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+  }
 }
 
 .similar__idx {

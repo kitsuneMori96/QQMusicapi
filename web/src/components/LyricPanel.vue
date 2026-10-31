@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { LyricData } from '@/api/contracts'
+import { findActiveIndex, parseLrc } from '@/lib/lrc'
 
 const props = defineProps<{
   lyric: LyricData | null
   loading?: boolean
+  currentTime?: number
+  seekable?: boolean
+}>()
+
+const emit = defineEmits<{
+  seek: [seconds: number]
 }>()
 
 type LyricKey = 'lyric' | 'trans' | 'roma'
@@ -28,7 +35,37 @@ watch(
   { immediate: true },
 )
 
-const text = computed(() => props.lyric?.[active.value] ?? '')
+const rawText = computed(() => props.lyric?.[active.value] ?? '')
+const lines = computed(() => parseLrc(props.lyric?.[active.value]))
+const hasLines = computed(() => lines.value.length > 0)
+const activeIndex = computed(() => findActiveIndex(lines.value, props.currentTime))
+
+const box = ref<HTMLElement | null>(null)
+let suppressUntil = 0
+
+/** 用户主动滚动后 3 秒内不抢滚动位置 */
+function suppressAutoScroll(): void {
+  suppressUntil = Date.now() + 3000
+}
+
+function scrollToActive(): void {
+  if (Date.now() < suppressUntil) return
+  const el = box.value
+  if (!el) return
+  const line = el.querySelector<HTMLElement>('.lyric__line--active')
+  if (!line) return
+  el.scrollTop = line.offsetTop - el.clientHeight / 2 + line.clientHeight / 2
+}
+
+watch(activeIndex, () => scrollToActive())
+watch(active, () => {
+  if (box.value) box.value.scrollTop = 0
+})
+
+function jump(seconds: number): void {
+  if (!props.seekable) return
+  emit('seek', seconds)
+}
 </script>
 
 <template>
@@ -55,8 +92,27 @@ const text = computed(() => props.lyric?.[active.value] ?? '')
 
     <p v-if="lyric?.decodeError" class="lyric__decode-err">{{ lyric.decodeError }}</p>
 
-    <div class="lyric__box scroll-y">
-      <pre v-if="text" class="lyric__text">{{ text }}</pre>
+    <div
+      ref="box"
+      class="lyric__box scroll-y"
+      @wheel.passive="suppressAutoScroll"
+      @pointerdown="suppressAutoScroll"
+    >
+      <ol v-if="hasLines" class="lyric__lines">
+        <li
+          v-for="(line, index) in lines"
+          :key="`${line.time}-${index}`"
+          class="lyric__line"
+          :class="{
+            'lyric__line--active': index === activeIndex,
+            'lyric__line--seekable': seekable,
+          }"
+          @click="jump(line.time)"
+        >
+          {{ line.text || '♪' }}
+        </li>
+      </ol>
+      <pre v-else-if="rawText" class="lyric__text">{{ rawText }}</pre>
       <p v-else class="empty">{{ loading ? '加载中…' : '尚无歌词' }}</p>
     </div>
   </section>
@@ -113,6 +169,7 @@ const text = computed(() => props.lyric?.[active.value] ?? '')
 }
 
 .lyric__box {
+  position: relative;
   flex: 1;
   min-height: 140px;
   max-height: 340px;
@@ -121,6 +178,40 @@ const text = computed(() => props.lyric?.[active.value] ?? '')
   background: var(--panel-sunken);
   border: var(--hairline);
   border-radius: var(--radius);
+}
+
+.lyric__lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lyric__line {
+  padding: 1px 4px;
+  border-left: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  transition:
+    color 0.12s linear,
+    background 0.12s linear;
+}
+
+.lyric__line--seekable {
+  cursor: pointer;
+}
+
+.lyric__line--seekable:hover {
+  color: var(--text);
+}
+
+.lyric__line--active {
+  color: var(--blue);
+  border-left-color: var(--blue);
+  background: rgb(91 157 255 / 8%);
 }
 
 .lyric__text {

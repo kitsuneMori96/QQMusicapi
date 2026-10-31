@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { usePlayerStore } from '@/stores/player'
+import { usePlayerStore, type PlayerTrack } from '@/stores/player'
 import type { APlayerInstance } from '@/types/aplayer'
 
 const player = usePlayerStore()
 const container = ref<HTMLElement | null>(null)
 const instance = ref<APlayerInstance | null>(null)
 const unavailable = ref('')
+const mediaError = ref('')
+
+const BASE_TITLE = '解析 // QQMUSIC'
 
 /** APlayer 本地托管（用户网络无法访问 jsdelivr，禁止改回 CDN） */
 function loadVendor(): Promise<void> {
@@ -28,6 +31,131 @@ function loadVendor(): Promise<void> {
   })
 }
 
+function onTime(): void {
+  const audio = instance.value?.audio
+  if (audio) player.setProgress(audio.currentTime)
+}
+
+function onDuration(): void {
+  const audio = instance.value?.audio
+  if (audio) player.setProgress(audio.currentTime, audio.duration)
+}
+
+function onPlay(): void {
+  player.setPlaying(true)
+}
+
+function onPause(): void {
+  player.setPlaying(false)
+}
+
+function onMediaError(): void {
+  if (!player.current) return
+  mediaError.value = '音频加载失败，直链可能已过期，请重新解析后播放'
+  player.setPlaying(false)
+}
+
+function bindAudio(): void {
+  const audio = instance.value?.audio
+  if (!audio) return
+  audio.addEventListener('timeupdate', onTime)
+  audio.addEventListener('durationchange', onDuration)
+  audio.addEventListener('loadedmetadata', onDuration)
+  audio.addEventListener('play', onPlay)
+  audio.addEventListener('pause', onPause)
+  audio.addEventListener('error', onMediaError)
+}
+
+function unbindAudio(): void {
+  const audio = instance.value?.audio
+  if (!audio) return
+  audio.removeEventListener('timeupdate', onTime)
+  audio.removeEventListener('durationchange', onDuration)
+  audio.removeEventListener('loadedmetadata', onDuration)
+  audio.removeEventListener('play', onPlay)
+  audio.removeEventListener('pause', onPause)
+  audio.removeEventListener('error', onMediaError)
+}
+
+function updateMediaSession(track: PlayerTrack): void {
+  document.title = `${track.name} · ${track.artist} // QQMUSIC`
+  if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: track.name,
+    artist: track.artist,
+    album: track.qualityLabel,
+    artwork: track.cover
+      ? [{ src: track.cover, sizes: '300x300', type: 'image/jpeg' }]
+      : [],
+  })
+}
+
+function clearMediaSession(): void {
+  document.title = BASE_TITLE
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = null
+}
+
+function toAudio(track: PlayerTrack): {
+  name: string
+  artist: string
+  url: string
+  cover: string
+} {
+  return {
+    name: `${track.name} [${track.qualityLabel}]`,
+    artist: track.artist,
+    url: track.url,
+    cover: track.cover,
+  }
+}
+
+function applyTrack(track: PlayerTrack | null, prev: PlayerTrack | null): void {
+  const ap = instance.value
+  if (!ap) return
+  mediaError.value = ''
+
+  if (!track) {
+    ap.pause()
+    ap.list.clear()
+    clearMediaSession()
+    return
+  }
+
+  updateMediaSession(track)
+
+  const sameSong = Boolean(prev?.mid && track.mid && prev.mid === track.mid)
+  if (sameSong && prev?.qualityCode === track.qualityCode) return
+
+  if (sameSong) {
+    // 同曲换音质：原地换源，尽量保留播放进度与暂停状态
+    const audio = ap.audio
+    const at = audio?.currentTime ?? 0
+    const wasPlaying = audio ? !audio.paused : true
+    const item = ap.list.audios[0]
+    if (item) {
+      item.url = track.url
+      item.name = `${track.name} [${track.qualityLabel}]`
+      item.artist = track.artist
+      item.cover = track.cover
+    }
+    ap.list.switch(0)
+    if (audio && at > 0) {
+      const restore = (): void => {
+        const max = Number.isFinite(audio.duration) ? audio.duration : at
+        audio.currentTime = Math.min(at, max)
+      }
+      if (audio.readyState >= 1) restore()
+      else audio.addEventListener('loadedmetadata', restore, { once: true })
+    }
+    if (!wasPlaying) ap.pause()
+    return
+  }
+
+  ap.pause()
+  ap.list.clear()
+  ap.list.add([toAudio(track)], true)
+}
+
 onMounted(async () => {
   if (!container.value) return
   try {
@@ -44,6 +172,8 @@ onMounted(async () => {
       listMaxHeight: 80,
       audio: [],
     })
+    bindAudio()
+    if (player.current) applyTrack(player.current, null)
   } catch (e) {
     // 播放器失败不能拖垮解析与下载
     unavailable.value = e instanceof Error ? e.message : String(e)
@@ -52,31 +182,24 @@ onMounted(async () => {
 
 watch(
   () => player.current,
-  (track) => {
+  (track, prev) => applyTrack(track ?? null, prev ?? null),
+)
+
+watch(
+  () => player.seekRequest,
+  (req) => {
     const ap = instance.value
-    if (!ap || !track) return
-    try {
-      ap.list.clear()
-      ap.list.add(
-        [
-          {
-            name: `${track.name} [${track.qualityLabel}]`,
-            artist: track.artist,
-            url: track.url,
-            cover: track.cover,
-          },
-        ],
-        true,
-      )
-    } catch (e) {
-      unavailable.value = e instanceof Error ? e.message : String(e)
-    }
+    if (!req || !ap || !player.current) return
+    ap.seek(req.seconds)
+    if (ap.audio.paused) ap.play()
   },
 )
 
 onBeforeUnmount(() => {
+  unbindAudio()
   instance.value?.destroy()
   instance.value = null
+  clearMediaSession()
 })
 </script>
 
@@ -94,6 +217,7 @@ onBeforeUnmount(() => {
       <p v-if="unavailable" class="player__fallback">
         播放器不可用：{{ unavailable }}（解析与下载不受影响）
       </p>
+      <p v-if="mediaError" class="player__fallback">{{ mediaError }}</p>
     </div>
   </section>
 </template>

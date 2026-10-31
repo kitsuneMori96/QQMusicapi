@@ -8,6 +8,8 @@ const props = defineProps<{
   resolved: number
   total?: number
   downloading?: Record<string, boolean>
+  activeCode?: string
+  playing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -54,7 +56,11 @@ function statusText(state: QualityState | undefined): string {
           v-for="q in QUALITIES"
           :key="q.code"
           class="qrow"
-          :class="[`qrow--${states[q.code]?.status ?? 'idle'}`, `qrow--g-${q.group}`]"
+          :class="[
+            `qrow--${states[q.code]?.status ?? 'idle'}`,
+            `qrow--g-${q.group}`,
+            { 'qrow--active': activeCode === q.code },
+          ]"
         >
           <span class="qrow__code mono-num">{{ q.code }}</span>
           <span class="qrow__label">{{ q.label }}</span>
@@ -70,10 +76,16 @@ function statusText(state: QualityState | undefined): string {
             </button>
             <button
               class="qrow__btn"
-              :disabled="states[q.code]?.status !== 'ok'"
+              :disabled="states[q.code]?.status !== 'ok' || activeCode === q.code"
               @click="emit('play', q)"
             >
-              播放
+              {{
+                activeCode === q.code
+                  ? playing
+                    ? '正在播放'
+                    : '已暂停'
+                  : '播放'
+              }}
             </button>
             <button
               class="qrow__btn"
@@ -181,6 +193,15 @@ function statusText(state: QualityState | undefined): string {
 
 .qrow--ok .qrow__label {
   color: var(--text);
+}
+
+.qrow--active {
+  background: rgb(91 157 255 / 8%);
+}
+
+.qrow--active .qrow__label,
+.qrow--active .qrow__code {
+  color: var(--blue);
 }
 
 .qrow--ok .qrow__status {
