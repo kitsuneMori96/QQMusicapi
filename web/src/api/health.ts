@@ -1,5 +1,5 @@
 import { request } from './http'
-import type { HealthData } from './types'
+import type { HealthData } from './contracts'
 
 /** 服务健康检查（解析终端顶栏与状态栏共用） */
 export function getHealth(): Promise<HealthData> {

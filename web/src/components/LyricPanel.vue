@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { LyricData } from '@/api/types'
+import type { LyricData } from '@/api/contracts'
 
 const props = defineProps<{
   lyric: LyricData | null

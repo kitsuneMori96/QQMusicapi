@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
 }
 
 /* APlayer 暗色适配：去掉圆角阴影，贴合终端风 */
-.player__mount :deep(.aplayer) {
+.player__mount {
   background: var(--panel-sunken);
   color: var(--text);
   border: var(--hairline);
@@ -124,15 +124,85 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono);
 }
 
+.player__mount :deep(.aplayer-body),
+.player__mount :deep(.aplayer-info) {
+  background: var(--panel-sunken);
+  color: var(--text);
+  border-color: var(--line);
+  box-shadow: none;
+  font-family: var(--font-mono);
+}
+
 .player__mount :deep(.aplayer .aplayer-info) {
-  border-bottom-color: var(--line);
+  border-bottom: var(--hairline);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-music .aplayer-title) {
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-music .aplayer-author) {
+  color: var(--text-dim);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-time) {
+  color: var(--text-faint);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-bar-wrap .aplayer-bar) {
+  background: var(--line) !important;
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-bar-wrap .aplayer-bar .aplayer-loaded) {
+  background: var(--line-strong) !important;
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-bar-wrap .aplayer-bar .aplayer-played) {
+  background: var(--blue);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-bar-wrap .aplayer-bar .aplayer-thumb) {
+  background: var(--blue);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-icon) {
+  fill: var(--text-dim);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-icon:hover) {
+  fill: var(--blue);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-volume-wrap .aplayer-volume-bar-wrap .aplayer-volume-bar) {
+  background: var(--line);
+}
+
+.player__mount :deep(.aplayer .aplayer-info .aplayer-controller .aplayer-volume-wrap .aplayer-volume-bar-wrap .aplayer-volume-bar .aplayer-volume) {
+  background: var(--blue);
 }
 
 .player__mount :deep(.aplayer .aplayer-list) {
-  border-top-color: var(--line);
+  background: var(--panel);
+  border-top: var(--hairline);
 }
 
 .player__mount :deep(.aplayer .aplayer-list ol li) {
-  border-top-color: var(--line);
+  color: var(--text-dim);
+  border-top: 1px dashed rgb(42 47 54 / 55%);
+}
+
+.player__mount :deep(.aplayer .aplayer-list ol li:hover) {
+  background: var(--panel-raised);
+}
+
+.player__mount :deep(.aplayer .aplayer-list ol li.aplayer-list-light) {
+  background: var(--panel-sunken);
+  color: var(--blue);
+}
+
+.player__mount :deep(.aplayer .aplayer-list ol li .aplayer-list-index),
+.player__mount :deep(.aplayer .aplayer-list ol li .aplayer-list-author) {
+  color: var(--text-faint);
 }
 </style>

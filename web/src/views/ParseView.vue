@@ -6,12 +6,13 @@ import LyricPanel from '@/components/LyricPanel.vue'
 import SimilarList from '@/components/SimilarList.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import { useParseStore } from '@/stores/parse'
-import { useNoticeStore } from '@/stores/notice'
+import { usePlayerStore } from '@/stores/player'
 import { QUALITY_TOTAL, type Quality } from '@/lib/qualities'
-import { extractMid } from '@/lib/mid'
+import { coverUrl, extractMid } from '@/lib/mid'
+import { downloadUrl } from '@/api/song'
 
 const parse = useParseStore()
-const notice = useNoticeStore()
+const player = usePlayerStore()
 
 const pending = computed(() => parse.phase === 'parsing')
 
@@ -20,13 +21,28 @@ function submit(): void {
 }
 
 function play(quality: Quality): void {
-  notice.info('播放接口待接入', `${quality.label} (${quality.code})`)
+  const info = parse.urlOf(quality.code)
+  if (!info?.url) return
+  const track = parse.track
+  const artist =
+    (track?.singer ?? [])
+      .map((s) => s.name ?? '')
+      .filter(Boolean)
+      .join(' / ') || '—'
+  player.play({
+    name: track?.name || parse.mid,
+    artist,
+    url: info.url,
+    cover: coverUrl(track?.album?.mid),
+    qualityLabel: quality.label,
+    qualityCode: quality.code,
+  })
 }
 
 function download(quality: Quality): void {
-  const mid = parse.mid
-  if (!mid) return
-  window.location.href = `/song/download?mid=${encodeURIComponent(mid)}&type=${quality.code}`
+  if (!parse.mid) return
+  // 服务端代理下载：文件名取「标题 - 歌手」，mp3/flac 内嵌封面与歌词
+  window.location.href = downloadUrl(parse.mid, quality.code)
 }
 
 function selectSimilar(mid: string): void {
@@ -49,7 +65,7 @@ function selectSimilar(mid: string): void {
           placeholder="粘贴歌曲链接 / songmid= / 直接输入 mid"
           @keydown.enter="submit"
         />
-        <button class="btn btn--primary" :disabled="pending || !parse.canParse" @click="submit">
+        <button class="btn btn--primary" :disabled="pending" @click="submit">
           {{ pending ? '解析中…' : '解析' }}
         </button>
       </div>
@@ -58,7 +74,6 @@ function selectSimilar(mid: string): void {
         <span class="micro text-faint">{{ QUALITY_TOTAL }} 种音质</span>
         <span v-if="parse.phase === 'error'" class="micro text-err">{{ parse.detailError }}</span>
         <span class="spacer" />
-        <span class="micro text-faint">接口层待接入</span>
       </div>
     </section>
 
@@ -93,8 +108,8 @@ function selectSimilar(mid: string): void {
       </div>
 
       <div class="parse__col">
-        <LyricPanel :lyric="parse.lyric" />
-        <SimilarList :items="parse.similar" @select="selectSimilar" />
+        <LyricPanel :lyric="parse.lyric" :loading="parse.lyricLoading" />
+        <SimilarList :items="parse.similar" :loading="parse.similarLoading" @select="selectSimilar" />
       </div>
     </div>
   </div>

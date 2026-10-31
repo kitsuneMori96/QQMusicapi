@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  items: Array<{ id?: number; mid?: string; name?: string; singer?: string }>
+  items: Array<{ id?: number | string; mid?: string; name?: string; singer?: string }>
   loading?: boolean
 }>()
 

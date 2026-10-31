@@ -49,7 +49,7 @@ function statusText(state: QualityState | undefined): string {
           <span class="qrow__code mono-num">{{ q.code }}</span>
           <span class="qrow__label">{{ q.label }}</span>
           <span class="qrow__status label">{{ statusText(states[q.code]) }}</span>
-          <span class="qrow__err micro">{{ states[q.code]?.error ?? '' }}</span>
+          <span class="qrow__err micro" :title="states[q.code]?.error ?? ''">{{ states[q.code]?.error ?? '' }}</span>
           <span class="qrow__actions">
             <button
               class="qrow__btn"

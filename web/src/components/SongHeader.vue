@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { Track } from '@/api/types'
+import { computed, ref, watch } from 'vue'
+import type { Track } from '@/api/contracts'
 import { coverUrl, formatDuration } from '@/lib/mid'
 
 const props = defineProps<{
@@ -10,6 +10,13 @@ const props = defineProps<{
 }>()
 
 const cover = computed(() => coverUrl(props.track?.album?.mid))
+const coverBroken = ref(false)
+watch(
+  () => props.track?.album?.mid,
+  () => {
+    coverBroken.value = false
+  },
+)
 const singers = computed(() => {
   const s = props.track?.singer
   if (!Array.isArray(s) || s.length === 0) return '—'
@@ -29,7 +36,13 @@ const failed = computed(() => !props.track)
 
     <div class="panel-body song">
       <div class="song__cover">
-        <img v-if="cover" :src="cover" :alt="track?.name ?? 'cover'" loading="lazy" />
+        <img
+          v-if="cover && !coverBroken"
+          :src="cover"
+          :alt="track?.name ?? 'cover'"
+          loading="lazy"
+          @error="coverBroken = true"
+        />
         <span v-else class="label text-faint">NO ART</span>
       </div>
 

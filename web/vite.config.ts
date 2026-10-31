@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-const API_TARGET = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8787'
+const API_TARGET = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:3300'
 
 // `/login` 既是 SPA 路由也是后端接口前缀，所以这里只代理 /login 下的具体接口，
 // 避免开发态访问 /login 页面时被代理到后端。

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getHealth } from '@/api/health'
-import type { HealthData } from '@/api/types'
+import type { HealthData } from '@/api/contracts'
 
 export type ServicePhase = 'idle' | 'checking' | 'online' | 'offline'
 

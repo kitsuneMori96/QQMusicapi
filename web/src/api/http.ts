@@ -5,11 +5,7 @@
  * 改为从 contracts 推导，本文件只保留传输层逻辑。
  */
 
-export interface Envelope<T> {
-  code: number
-  message: string
-  data: T
-}
+import type { ApiEnvelope } from './contracts'
 
 export class ApiError extends Error {
   readonly code: number
@@ -65,9 +61,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   const text = await response.text()
-  let envelope: Envelope<T>
+  let envelope: ApiEnvelope<T>
   try {
-    envelope = JSON.parse(text) as Envelope<T>
+    envelope = JSON.parse(text) as ApiEnvelope<T>
   } catch {
     throw new ApiError(
       `响应不是 JSON (HTTP ${response.status}): ${text.slice(0, 120)}`,
@@ -86,5 +82,5 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     )
   }
 
-  return envelope.data
+  return (envelope as Extract<ApiEnvelope<T>, { code: 0 }>).data
 }

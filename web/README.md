@@ -10,10 +10,10 @@ npm install
 npm run dev        # http://127.0.0.1:5273
 ```
 
-开发态由 Vite 代理到后端（默认 `http://127.0.0.1:8787`）：
+开发态由 Vite 代理到后端（默认 `http://127.0.0.1:3300`，即项目默认端口）：
 
 ```bash
-VITE_API_TARGET=http://127.0.0.1:8788 npm run dev
+VITE_API_TARGET=http://127.0.0.1:3300 npm run dev
 ```
 
 代理路径：`/health`、`/song/*`、`/user/*`、`/vendor/*`，以及 `/login/status|qrcode|checkQrcode|phone|sendAuthcode|refresh|logout`。
@@ -48,7 +48,8 @@ web/
 │  ├─ api/
 │  │  ├─ http.ts           # {code,message,data} 信封 + 超时
 │  │  ├─ health.ts         # /health
-│  │  └─ types.ts          # 临时类型，contracts 落地后替换
+│  │  ├─ song.ts           # detail / urls / lyric / similar / download
+│  │  └─ contracts.ts      # 唯一出口，import type 自根 src/contracts
 │  ├─ lib/
 │  │  ├─ mid.ts            # songmid 提取 / 封面 / 时长
 │  │  └─ qualities.ts      # 17 种音质目录
@@ -69,8 +70,8 @@ web/
 
 ## 当前状态
 
-已就位：外壳、状态栏（`/health` 探测）、解析页骨架（曲目/17 音质/歌词/相似/播放器面板）、登录页骨架（二维码状态机 UI、手机号表单、会话与用户卡）、APlayer 本地托管加载与失败降级、Vitest 单测、Playwright 外壳用例。
+已就位：外壳、状态栏（`/health` 探测）、**解析页已接契约**（详情 / 17 音质直链并发探测 / 歌词 / 相似曲目 / 服务端代理下载 / APlayer 播放）、登录页骨架（二维码状态机 UI、手机号表单、会话与用户卡）、APlayer 本地托管与暗色适配及失败降级、Vitest 20 例、Playwright 5 例。
 
-待接入（等 `src/contracts`）：`/song/detail`、`/song/urls`×17、`/song/lyric`、`/song/similar`、登录二维码 2s 轮询与手机登录、用户卡数据、凭证刷新/退出。
+待接入（等登录联调通知）：`/login/*` 二维码 2s 轮询、手机登录、用户卡数据、凭证刷新/退出。
 
 APlayer 走 `/vendor/APlayer.min.js|css`（本地托管，严禁改回 jsdelivr）。

@@ -55,9 +55,9 @@ const loginText = computed(() => {
     </span>
 
     <span class="statusbar__cell">
-      <span class="label">凭证</span>
-      <span class="statusbar__value">
-        {{ status.health?.expired ? '已过期' : status.health?.file ?? '—' }}
+      <span class="label">核心</span>
+      <span class="statusbar__value" :class="status.health?.status === 'ok' ? 'text-ok' : ''">
+        {{ status.health ? `v${status.health.version} · ${status.health.status}` : '—' }}
       </span>
     </span>
 

@@ -47,12 +47,12 @@ onBeforeUnmount(() => {
               <dd class="mono-num">{{ status.health?.musicid ?? '—' }}</dd>
             </div>
             <div class="kv">
-              <dt>凭证过期</dt>
-              <dd>{{ status.health?.expired ? '是' : '否' }}</dd>
+              <dt>服务</dt>
+              <dd>{{ status.health ? `v${status.health.version}` : '—' }}</dd>
             </div>
             <div class="kv">
-              <dt>凭证文件</dt>
-              <dd>{{ status.health?.file ?? '—' }}</dd>
+              <dt>凭证</dt>
+              <dd class="text-faint">待接入 /login/status</dd>
             </div>
           </dl>
 
