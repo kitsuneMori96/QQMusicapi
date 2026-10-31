@@ -21,6 +21,19 @@ export class ApiError extends Error {
   }
 }
 
+/** 外部 signal 取消时抛出，调用方据此静默忽略（区别于超时/网络错误）。 */
+export class AbortedError extends Error {
+  constructor(message = '请求已取消') {
+    super(message)
+    this.name = 'AbortError'
+  }
+}
+
+/** 是否为取消错误：优先看 name，兼容浏览器原生 AbortError。 */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST'
   body?: unknown
@@ -47,6 +60,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       signal: controller.signal,
     })
   } catch (error) {
+    // 外部取消优先判定：调用方主动 abort 时不应被当成超时
+    if (signal?.aborted) {
+      throw new AbortedError()
+    }
     if (controller.signal.aborted) {
       throw new ApiError(`请求超时 (${Math.round(timeoutMs / 1000)}s): ${path}`, -1, 0)
     }

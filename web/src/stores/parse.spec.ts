@@ -135,4 +135,34 @@ describe('parse store', () => {
     expect(store.mid).toBe('anotherMid001')
     expect(store.resolved).toBe(2)
   })
+
+  it('单条重试只刷新目标音质', async () => {
+    const fetchMock = mockBackend()
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+    expect(store.qualities.C200?.status).toBe('err')
+    const resolvedBefore = store.qualities.F000
+
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.startsWith('/song/urls')) {
+        const params = new URL(`http://x${url}`).searchParams
+        const type = params.get('type') ?? ''
+        const key = params.get('mids') ?? MID
+        return type === 'C200'
+          ? jsonResponse({ [key]: { url: 'https://cdn.example/C200.m4a' } })
+          : jsonResponse({ [key]: { error: '仍不可用' } })
+      }
+      return jsonResponse({})
+    })
+
+    await store.retryQuality('C200')
+
+    expect(store.qualities.C200).toEqual({
+      status: 'ok',
+      url: 'https://cdn.example/C200.m4a',
+    })
+    expect(store.qualities.F000).toEqual(resolvedBefore)
+  })
 })

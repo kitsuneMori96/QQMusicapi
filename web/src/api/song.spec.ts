@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { downloadUrl, getSongLyric, getSongSimilar, getSongUrl } from './song'
+import {
+  downloadSong,
+  downloadUrl,
+  getSongLyric,
+  getSongSimilar,
+  getSongUrl,
+  parseContentDispositionFilename,
+} from './song'
 
 function mockFetch(data: unknown) {
   const fetchMock = vi.fn(async (_input: string | URL | Request) => ({
@@ -45,5 +52,68 @@ describe('song api', () => {
 
   it('下载地址指向服务端代理端点', () => {
     expect(downloadUrl('abc123', 'F000')).toBe('/song/download?mid=abc123&type=F000')
+  })
+
+  it('Content-Disposition 文件名：RFC 5987 优先且可解码', () => {
+    expect(parseContentDispositionFilename(null)).toBe('')
+    expect(parseContentDispositionFilename('attachment; filename="a.flac"')).toBe('a.flac')
+    expect(
+      parseContentDispositionFilename(
+        "attachment; filename=\"fallback.flac\"; filename*=UTF-8''%E6%99%B4%E5%A4%A9.flac",
+      ),
+    ).toBe('晴天.flac')
+  })
+
+  it('下载失败时抛出后端 message，不触发保存', async () => {
+    const createObjectURL = vi.fn(() => 'blob:mock')
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ code: 404, message: '歌曲无版权' }),
+      })),
+    )
+
+    await expect(downloadSong('mid1', 'F000')).rejects.toMatchObject({
+      message: '歌曲无版权',
+      status: 404,
+    })
+    expect(createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('下载成功时按响应头文件名保存并释放 objectURL', async () => {
+    vi.useFakeTimers()
+    const createObjectURL = vi.fn(() => 'blob:mock')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === 'content-disposition'
+              ? "attachment; filename*=UTF-8''%E6%99%B4%E5%A4%A9.flac"
+              : null,
+        },
+        blob: async () => new Blob(['audio']),
+      })),
+    )
+
+    await expect(downloadSong('mid1', 'F000')).resolves.toBe('晴天.flac')
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(document.querySelector('a[download="晴天.flac"]')).toBeNull()
+
+    vi.runAllTimers()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock')
+    click.mockRestore()
+    vi.useRealTimers()
   })
 })

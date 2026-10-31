@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import SongHeader from '@/components/SongHeader.vue'
 import QualityGrid from '@/components/QualityGrid.vue'
 import LyricPanel from '@/components/LyricPanel.vue'
@@ -9,16 +10,49 @@ import { useParseStore } from '@/stores/parse'
 import { usePlayerStore } from '@/stores/player'
 import { QUALITY_TOTAL, type Quality } from '@/lib/qualities'
 import { coverUrl, extractMid } from '@/lib/mid'
-import { downloadUrl } from '@/api/song'
 
 const parse = useParseStore()
 const player = usePlayerStore()
+const route = useRoute()
+const router = useRouter()
 
 const pending = computed(() => parse.phase === 'parsing')
 
-function submit(): void {
-  void parse.parse()
+function queryMid(): string {
+  return extractMid(String(route.query.mid ?? ''))
 }
+
+/**
+ * 统一入口：解析成功后把 mid 写入 URL（push，保留历史），失败不写。
+ * 由 URL（挂载/前进后退）触发时 URL 已经是目标值，不会重复写入。
+ */
+async function runParse(mid?: string): Promise<void> {
+  if (mid) parse.input = mid
+  const ok = await parse.parse()
+  if (!ok || !parse.mid || queryMid() === parse.mid) return
+  void router.push({ query: { ...route.query, mid: parse.mid } })
+}
+
+function submit(): void {
+  void runParse()
+}
+
+watch(
+  () => String(route.query.mid ?? ''),
+  (value) => {
+    const next = extractMid(value)
+    if (!next || next === parse.mid) return
+    parse.input = next
+    void runParse(next)
+  },
+)
+
+onMounted(() => {
+  const mid = queryMid()
+  if (!mid) return
+  parse.input = mid
+  void runParse(mid)
+})
 
 function play(quality: Quality): void {
   const info = parse.urlOf(quality.code)
@@ -40,14 +74,20 @@ function play(quality: Quality): void {
 }
 
 function download(quality: Quality): void {
-  if (!parse.mid) return
-  // 服务端代理下载：文件名取「标题 - 歌手」，mp3/flac 内嵌封面与歌词
-  window.location.href = downloadUrl(parse.mid, quality.code)
+  void parse.download(quality.code)
+}
+
+function retry(quality: Quality): void {
+  void parse.retryQuality(quality.code)
+}
+
+function retryFailed(): void {
+  void parse.retryFailed()
 }
 
 function selectSimilar(mid: string): void {
   parse.input = mid
-  submit()
+  void runParse(mid)
 }
 </script>
 
@@ -103,8 +143,11 @@ function selectSimilar(mid: string): void {
         <QualityGrid
           :states="parse.qualities"
           :resolved="parse.resolved"
+          :downloading="parse.downloading"
           @play="play"
           @download="download"
+          @retry="retry"
+          @retry-failed="retryFailed"
         />
       </div>
 

@@ -7,14 +7,21 @@ const props = defineProps<{
   states: Record<string, QualityState>
   resolved: number
   total?: number
+  downloading?: Record<string, boolean>
 }>()
 
 const emit = defineEmits<{
   play: [quality: Quality]
   download: [quality: Quality]
+  retry: [quality: Quality]
+  'retry-failed': []
 }>()
 
 const total = computed(() => props.total ?? QUALITIES.length)
+
+const failedCount = computed(
+  () => QUALITIES.filter((q) => props.states[q.code]?.status === 'err').length,
+)
 
 function statusText(state: QualityState | undefined): string {
   switch (state?.status) {
@@ -35,6 +42,9 @@ function statusText(state: QualityState | undefined): string {
     <div class="panel-head">
       <span class="label">音质直链</span>
       <span class="spacer" />
+      <button v-if="failedCount > 0" class="qgrid__retry" @click="emit('retry-failed')">
+        重试失败 ({{ failedCount }})
+      </button>
       <span class="micro mono-num text-dim">{{ resolved }} / {{ total }}</span>
     </div>
 
@@ -52,6 +62,13 @@ function statusText(state: QualityState | undefined): string {
           <span class="qrow__err micro" :title="states[q.code]?.error ?? ''">{{ states[q.code]?.error ?? '' }}</span>
           <span class="qrow__actions">
             <button
+              v-if="states[q.code]?.status === 'err'"
+              class="qrow__btn"
+              @click="emit('retry', q)"
+            >
+              重试
+            </button>
+            <button
               class="qrow__btn"
               :disabled="states[q.code]?.status !== 'ok'"
               @click="emit('play', q)"
@@ -60,10 +77,10 @@ function statusText(state: QualityState | undefined): string {
             </button>
             <button
               class="qrow__btn"
-              :disabled="states[q.code]?.status !== 'ok'"
+              :disabled="states[q.code]?.status !== 'ok' || downloading?.[q.code]"
               @click="emit('download', q)"
             >
-              下载
+              {{ downloading?.[q.code] ? '下载中…' : '下载' }}
             </button>
           </span>
         </div>
@@ -78,9 +95,24 @@ function statusText(state: QualityState | undefined): string {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.qgrid__retry {
+  height: 18px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--warn);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.qgrid__retry:hover {
+  border-color: var(--warn);
+}
+
 .qrow {
   display: grid;
-  grid-template-columns: 40px minmax(64px, 1fr) 30px minmax(0, 1.6fr) 52px;
+  grid-template-columns: 40px minmax(56px, 1fr) 30px minmax(0, 1.5fr) auto;
   align-items: center;
   gap: 4px;
   min-height: 26px;
