@@ -1,0 +1,391 @@
+/* 终端基础样式：reset、排版、通用面板/标签/表单/按钮原语。 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 500;
+  font-size: var(--fs-title);
+  letter-spacing: 0.02em;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--blue);
+  color: var(--bg);
+}
+
+/* ---------- 滚动条：细、无圆角 ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 排版原语 ---------- */
+
+.label {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.micro {
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+
+.mono-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-dim {
+  color: var(--text-dim);
+}
+
+.text-faint {
+  color: var(--text-faint);
+}
+
+.text-ok {
+  color: var(--ok);
+}
+
+.text-warn {
+  color: var(--warn);
+}
+
+.text-err {
+  color: var(--err);
+}
+
+.text-blue {
+  color: var(--blue);
+}
+
+.text-purple {
+  color: var(--purple);
+}
+
+/* ---------- 面板 ---------- */
+
+.panel {
+  background: var(--panel);
+  border: var(--hairline);
+  border-radius: var(--radius);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  border-bottom: var(--hairline);
+}
+
+.panel-head .label {
+  color: var(--text-dim);
+}
+
+.panel-head .spacer {
+  margin-left: auto;
+}
+
+.panel-body {
+  padding: var(--sp-3);
+}
+
+.panel-body--flush {
+  padding: 0;
+}
+
+/* 双栏密集布局 */
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 键值行 */
+.kv {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.kv + .kv {
+  border-top: 1px dashed rgb(42 47 54 / 55%);
+}
+
+.kv > dt {
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+
+.kv > dd {
+  margin: 0;
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 表单 ---------- */
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.input {
+  width: 100%;
+  height: var(--row-h);
+  padding: 0 var(--sp-3);
+  background: var(--panel-sunken);
+  border: var(--hairline);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--blue);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input--num {
+  width: 72px;
+}
+
+/* ---------- 按钮 ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: var(--row-h);
+  padding: 0 var(--sp-4);
+  background: var(--panel-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.btn:disabled {
+  color: var(--text-faint);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #0b0d0f;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--blue);
+  color: #0b0d0f;
+  filter: brightness(1.08);
+}
+
+.btn--primary:disabled {
+  background: var(--line);
+  border-color: var(--line);
+  color: var(--text-faint);
+  filter: none;
+}
+
+.btn--danger:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line);
+}
+
+/* ---------- 标签 / 状态点 ---------- */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  height: 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tag--ok {
+  border-color: rgb(62 207 142 / 45%);
+  color: var(--ok);
+}
+
+.tag--warn {
+  border-color: rgb(242 193 78 / 45%);
+  color: var(--warn);
+}
+
+.tag--err {
+  border-color: rgb(255 107 107 / 45%);
+  color: var(--err);
+}
+
+.tag--blue {
+  border-color: rgb(91 157 255 / 45%);
+  color: var(--blue);
+}
+
+.tag--purple {
+  border-color: rgb(167 139 250 / 45%);
+  color: var(--purple);
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+
+.dot--on {
+  background: var(--ok);
+  box-shadow: 0 0 0 2px rgb(62 207 142 / 12%);
+}
+
+.dot--off {
+  background: var(--err);
+  box-shadow: 0 0 0 2px rgb(255 107 107 / 12%);
+}
+
+.dot--busy {
+  background: var(--amber);
+}
+
+/* ---------- 空态 / 加载 ---------- */
+
+.empty {
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-micro);
+  color: var(--text-faint);
+}
+
+.spinner {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--line-strong);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 滚动区域 */
+.scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
