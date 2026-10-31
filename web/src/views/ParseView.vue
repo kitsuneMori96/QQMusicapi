@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SongHeader from '@/components/SongHeader.vue'
 import QualityGrid from '@/components/QualityGrid.vue'
@@ -16,6 +16,9 @@ const player = usePlayerStore()
 const route = useRoute()
 const router = useRouter()
 
+const searchEl = ref<HTMLInputElement | null>(null)
+const resultEl = ref<HTMLElement | null>(null)
+
 const pending = computed(() => parse.phase === 'parsing')
 const activeQuality = computed(() =>
   player.current?.mid === parse.mid ? (player.current?.qualityCode ?? '') : '',
@@ -30,15 +33,37 @@ function queryMid(): string {
  * 统一入口：解析成功后把 mid 写入 URL（push，保留历史），失败不写。
  * 由 URL（挂载/前进后退）触发时 URL 已经是目标值，不会重复写入。
  */
-async function runParse(mid?: string): Promise<void> {
+async function runParse(mid?: string): Promise<boolean> {
   if (mid) parse.input = mid
   const ok = await parse.parse()
-  if (!ok || !parse.mid || queryMid() === parse.mid) return
+  if (!ok || !parse.mid || queryMid() === parse.mid) return ok
   void router.push({ query: { ...route.query, mid: parse.mid } })
+  return ok
+}
+
+/** 解析成功后把焦点移到结果区，读屏和键盘用户不必再从输入框走一遍 */
+async function focusResults(): Promise<void> {
+  await nextTick()
+  resultEl.value?.focus()
 }
 
 function submit(): void {
-  void runParse()
+  void runParse().then((ok) => {
+    if (ok) void focusResults()
+  })
+}
+
+/** `/` 快速回到搜索框（输入类控件内不拦截） */
+function onSlashShortcut(event: KeyboardEvent): void {
+  if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+  const target = event.target as HTMLElement | null
+  const tag = target?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+    return
+  }
+  event.preventDefault()
+  searchEl.value?.focus()
+  searchEl.value?.select()
 }
 
 watch(
@@ -52,10 +77,15 @@ watch(
 )
 
 onMounted(() => {
+  window.addEventListener('keydown', onSlashShortcut)
   const mid = queryMid()
   if (!mid) return
   parse.input = mid
   void runParse(mid)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onSlashShortcut)
 })
 
 // 换歌时停掉旧曲目，避免播放器继续占用已失效的直链
@@ -115,12 +145,14 @@ function selectSimilar(mid: string): void {
       <div class="query__row">
         <span class="label query__label">SONG</span>
         <input
+          ref="searchEl"
           v-model="parse.input"
           class="input"
           type="text"
           spellcheck="false"
           autocomplete="off"
           placeholder="粘贴歌曲链接 / songmid= / 直接输入 mid"
+          aria-keyshortcuts="/"
           @keydown.enter="submit"
         />
         <button class="btn btn--primary" :disabled="pending" @click="submit">
@@ -135,7 +167,7 @@ function selectSimilar(mid: string): void {
       </div>
     </section>
 
-    <div class="grid-2 parse__grid">
+    <div ref="resultEl" class="grid-2 parse__grid parse__results" tabindex="-1">
       <div class="parse__col">
         <SongHeader
           v-if="parse.mid"
@@ -223,6 +255,10 @@ function selectSimilar(mid: string): void {
 
 .parse__grid {
   align-items: start;
+}
+
+.parse__results:focus {
+  outline: none;
 }
 
 .parse__col {
