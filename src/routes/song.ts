@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { ok } from "../http/responses.ts";
 import { httpError } from "../http/errorHandler.ts";
 import { parseSongFileType, resolveSongFileType } from "../modules/song_filetype.js";
+import { extractLrcText } from "../services/songService.js";
 import {
   SongDetailQuerySchema,
   SongDownloadQuerySchema,
@@ -49,7 +50,13 @@ export function registerSongRoutes(
     { schema: { querystring: SongLyricQuerySchema } },
     async (req) => {
       const wantDecode = String(req.query.decode ?? "1") !== "0";
-      return ok(await songService.resolveLyric(req.query.mid, { wantDecode }));
+      const data = await songService.resolveLyric(req.query.mid, { wantDecode });
+      if (wantDecode && req.query.format === "text") {
+        for (const key of ["lyric", "trans", "roma"]) {
+          if (typeof data[key] === "string") data[key] = extractLrcText(data[key]);
+        }
+      }
+      return ok(data);
     },
   );
 

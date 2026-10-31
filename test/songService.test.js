@@ -116,9 +116,9 @@ describe("SongService.prepareDownload", () => {
     });
     const svc = new SongService(client);
     const res = await svc.prepareDownload("MID1", "M800");
-    assert.equal(res.meta.lyric, "[0,2250]晴天\n");
+    assert.equal(res.meta.lyric, "[00:00.000]晴天");
     const tags = NodeID3.read(res.buffer);
-    assert.equal(tags.unsynchronisedLyrics.text, "[0,2250]晴天\n");
+    assert.equal(tags.unsynchronisedLyrics.text, "[00:00.000]晴天");
   });
 
   it("不支持的容器仅重命名, 不打标签", async () => {
@@ -178,7 +178,7 @@ describe("extractLrcText", () => {
     assert.equal(out.includes("LyricContent"), false);
     assert.match(out, /^\[ti:晴天\]/);
     assert.equal(out.includes("[ar:A & B]"), true);
-    assert.equal(out.includes("[0,2250]晴天周杰伦\n"), true);
+    assert.match(out, /\[00:00\.000\]晴天周杰伦$/);
     assert.equal(/\(\d+,\d+\)/.test(out), false);
   });
 

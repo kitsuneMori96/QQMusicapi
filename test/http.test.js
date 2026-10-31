@@ -31,7 +31,10 @@ function makeClient() {
 
 function makeSongService() {
   return {
-    resolveLyric: async () => ({ raw: {}, lyric: "[00:00.00]晴天" }),
+    resolveLyric: async () => ({
+      raw: {},
+      lyric: '<LyricInfo><Lyric_1 LyricContent="[ti:晴天] [0,100]晴(0,100)天(100,100)"/></LyricInfo>',
+    }),
     similar: async () => ({ list: [], groups: [] }),
     prepareDownload: async (mid, type) => ({
       buffer: Buffer.from("abc"),
@@ -135,6 +138,29 @@ describe("HTTP 接口", () => {
     assert.equal(res.statusCode, 200);
     assert.match(res.headers["content-type"], /text\/html/);
     assert.match(res.body, /<html/i);
+  });
+
+  it("/song/lyric 默认返回解密后的 QRC XML", async () => {
+    const res = await app.inject({ method: "GET", url: "/song/lyric?mid=0039MnYb0qxYhV&decode=1" });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.json().data.lyric, /^<LyricInfo>/);
+  });
+
+  it("/song/lyric?format=text 剥成纯 LRC", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&decode=1&format=text",
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().data.lyric, "[ti:晴天]\n[00:00.000]晴天");
+  });
+
+  it("/song/lyric 非法 format -> 400", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&format=xml",
+    });
+    assert.equal(res.statusCode, 400);
   });
 
   it("POST /login/credential 接受额外字段并回写", async () => {

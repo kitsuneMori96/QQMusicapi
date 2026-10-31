@@ -29,9 +29,18 @@ export class DownloadError extends Error {
 
 const XML_ESCAPES = { "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'", "&#39;": "'" };
 
+/** 毫秒 -> LRC 时间轴 [mm:ss.xxx] */
+function msToLrcTime(ms) {
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const x = ms % 1000;
+  return `[${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(x).padStart(3, "0")}]`;
+}
+
 /**
  * 解密后的 QRC 是 XML, 逐字时间标记会污染纯文本歌词;
- * 这里取出 LyricContent 属性并剥掉 `(起始,时长)` 标记, 还原普通 LRC.
+ * 这里取出 LyricContent 属性, 把 QRC 行标记 `[起始,时长]` 转成 LRC 时间轴,
+ * 再剥掉逐字标记 `(起始,时长)`, 还原普通 LRC.
  */
 export function extractLrcText(text) {
   if (!text || !text.includes("<Lyric_")) return text;
@@ -48,7 +57,18 @@ export function extractLrcText(text) {
     return c >= 0x20 && c !== 0x7f ? String.fromCharCode(c) : "";
   });
   best = best.replace(/&amp;/g, "&");
-  return best.replace(/\(\d+,\d+\)/g, "");
+  best = best.replace(/\(\d+,\d+\)/g, "");
+  // QRC 原文行间可能同时有换行和空格, 先归一, 再由行标记决定断行
+  best = best.replace(/[ \t\r\n]+/g, " ");
+  // QRC 每行以 [起始毫秒,时长] 开头 -> 标准 LRC 时间轴, 并断行
+  best = best.replace(/\[(\d+),\d+\]/g, (_, start) => `\n${msToLrcTime(Number(start))}`);
+  // 元数据标签 [ti:]/[ar:]/[al:] 等各占一行
+  best = best.replace(/\]\s*\[((?:ti|ar|al|by|offset|re|ve|length):)/g, "]\n[$1");
+  return best
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim();
 }
 
 export class SongService {

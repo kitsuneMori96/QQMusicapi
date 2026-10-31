@@ -110,11 +110,11 @@ export function createApp(options: AppOptions = {}): App {
   app.get("/login", servePage(loginPage));
 
   if (useSpa) {
-    // wildcard:false -> 启动时为已存在的构建产物注册精确路由, 未命中走 404 处理(SPA 回退)
+    // wildcard:true -> 运行时按磁盘解析, web/dist 重新构建后无需重启服务
     app.register(fastifyStatic, {
       root: WEB_DIST,
       prefix: "/",
-      wildcard: false,
+      wildcard: true,
       index: false,
       decorateReply: false,
     });

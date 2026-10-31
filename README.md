@@ -8,8 +8,9 @@
 - **请求描述符** `Request`：实现 thenable，可直接 `await`，也支持 `gather` 批量并发
 - **签名算法**：`zzc_sign` 签名、自定义 TripleDES 加解密、QRC 歌词解密
 - **业务模块**：`search` / `song` / `user` / `login`
-- **Koa Web 服务**：REST API + 内置 Web UI（首页解析器 + 登录管理页）
-- **APlayer 播放器**：首页集成 [APlayer](https://aplayer.js.org/) 播放器，支持 17 种音质在线试听
+- **Fastify Web 服务**：REST API + Vue 3 前端（解析页 + 登录管理页），生产环境由同一端口托管
+- **共享契约** `src/contracts`：TypeBox schema 同时承担请求校验与前端类型，前后端字段不再靠猜
+- **APlayer 播放器**：本地托管 [APlayer](https://aplayer.js.org/)，支持 17 种音质在线试听（不依赖 jsdelivr）
 - **多平台支持**：Android / Desktop / Web 三种平台版本策略
 
 ## 📦 安装
@@ -19,7 +20,7 @@ cd QQMusicapi
 npm install
 ```
 
-要求 Node.js >= 18。
+要求 Node.js >= 22.18（后端入口是原生 TypeScript，依赖 Node 的类型擦除，无需构建步骤）。
 
 ## 🚀 快速开始
 
@@ -36,7 +37,7 @@ npm run dev
 npm run dev:open
 
 # 命令行参数
-node src/server.js --port 3000 --host 127.0.0.1 --platform web
+node src/server.ts --port 3000 --host 127.0.0.1 --platform web
 
 # 查看全部启动参数
 npm run help
@@ -73,13 +74,30 @@ npm run dev:open     # 同上，并在启动时打开浏览器
 
 前台运行时 `Ctrl+C` 优雅退出。调试签名等细节可设 `QQMUSIC_DEBUG=1 npm run dev`。
 
+### 前端开发（web/）
+
+前端是独立的 Vue 3 + Vite 工程，开发时与后端分开跑：
+
+```bash
+# 1. 起后端（默认 3300）
+npm run dev
+
+# 2. 另开终端起前端（默认 5273，/api 与 /song 等请求代理到 3300）
+cd web && npm install && npm run dev
+```
+
+- 代理目标可用 `VITE_API_TARGET` 覆盖（见 `web/vite.config.ts`）
+- `npm run typecheck`（vue-tsc）、`npm test`（Vitest）、`npm run test:e2e`（Playwright）
+- 构建产物 `web/dist`：`npm run build:web`（根目录执行）。存在时后端直接托管它，`/` 与 `/login` 都回 SPA 的 `index.html`，深链可刷新；不存在时回退旧的 `src/public` 静态页
+- 接口类型统一从 `src/contracts` 以 `import type` 引入，请求参数以后端 TypeBox schema 为准
+
 ### qqm 管理脚本
 
 `qqm` 是本地安装的服务管理脚本（位于 `~/.local/bin/qqm`），把服务作为后台常驻进程管理，pid 与日志存放在 `$XDG_RUNTIME_DIR/qqm/`，不会污染项目目录：
 
 ```bash
 qqm                    # 后台启动并等待端口就绪（若已运行则提示）
-qqm start -- --port 3400   # 启动，`--` 后参数透传给 src/server.js
+qqm start -- --port 3400   # 启动，`--` 后参数透传给 src/server.ts
 qqm stop               # 优雅停止（SIGTERM，12s 超时后强杀）
 qqm restart            # 重启；restart -- <参数> 同 start
 qqm status             # 进程状态 + 监听地址 + /health 探测
@@ -114,6 +132,8 @@ pm2 save
 - 所有响应均为 JSON，格式：`{ code, message, data, meta? }`
 - `code === 0` 表示成功，非零表示失败
 - POST 请求使用 `application/json` body
+- 请求参数由 Fastify + TypeBox schema 校验，缺失/类型错误返回 `400`，`message` 会指明字段（如 `参数校验失败: querystring.mids 必填`）
+- 请求/响应类型定义与校验 schema 在 `src/contracts/`，前端以 `import type` 复用
 
 ### 路由列表
 
@@ -234,9 +254,18 @@ src/
 │   ├── sign.js          # zzc_sign 签名
 │   ├── tripledes.js     # TripleDES 加解密
 │   └── qrc.js           # QRC 歌词解密
+├── contracts/           # 接口契约 (TypeScript 类型 + TypeBox schema)
+│   ├── index.ts         # 统一出口 (前端 import type 这里)
+│   ├── common.ts        # 响应信封
+│   ├── health.ts        # /health
+│   ├── song.ts          # 歌曲数据结构
+│   ├── login.ts         # 登录/凭证结构
+│   ├── search.ts        # 搜索类型枚举与结构
+│   ├── user.ts          # 用户结构
+│   └── schemas.ts       # 请求参数 schema + 推导类型
 ├── http/                # HTTP 层通用件
-│   ├── responses.js     # ok()/fail() 响应信封
-│   └── errorHandler.js  # 异常 -> 状态码/JSON 统一处理
+│   ├── responses.ts     # ok()/fail() 响应信封
+│   └── errorHandler.ts  # 异常 -> 状态码/JSON, schema 错误格式化
 ├── models/              # 数据模型
 │   ├── credential.js    # 登录凭证
 │   └── request.js       # 请求描述符 (thenable)
@@ -247,20 +276,21 @@ src/
 │   ├── song_filetype.js # 音质类型 (resolveSongFileType/extForCode)
 │   ├── user.js          # 用户
 │   └── login.js         # 登录
-├── routes/              # Koa 路由 (按业务域拆分)
-│   ├── index.js         # mountAll() 统一挂载
-│   ├── search.js        # /search
-│   ├── song.js          # /song (含 /song/download)
-│   ├── user.js          # /user
-│   └── login.js         # /login
+├── routes/              # Fastify 路由 (按业务域拆分, .ts)
+│   ├── index.ts         # mountAll() 统一挂载
+│   ├── search.ts        # /search
+│   ├── song.ts          # /song (含 /song/download)
+│   ├── user.ts          # /user
+│   └── login.ts         # /login
 ├── services/            # 编排层 (组合模块 API + 后处理)
 │   ├── songService.js   # 歌词解码/详情归一化/封面抓取/下载准备
 │   └── tagWriter.js     # mp3/flac 标签与封面写入
 ├── store/
 │   └── credentialStore.js # 凭证文件存储 (Client 单一凭证来源)
-├── public/              # Web UI 静态资源
-│   ├── index.html       # 首页解析器
-│   └── login.html       # 登录管理页
+├── public/              # 旧版 Web UI (web/dist 不存在时的回退) + 内置 APlayer
+│   ├── index.html       # 首页解析器 (旧版)
+│   ├── login.html       # 登录管理页 (旧版)
+│   └── vendor/          # 本地托管的 APlayer 资源
 ├── utils/               # 工具
 │   ├── common.js        # 通用工具
 │   ├── device.js        # 设备指纹管理
@@ -269,8 +299,10 @@ src/
 ├── client.js            # 核心客户端
 ├── config.js            # 启动配置 (CLI > env > .env > 默认)
 ├── exceptions.js        # 异常定义
-├── server.js            # Koa 服务入口 (装配 + 启动)
+├── server.ts            # Fastify 服务入口 (装配 + 启动 + 静态托管)
 ├── version.js           # 版本号 (透出到 /health)
 └── versioning.js        # 平台版本策略
+web/                     # Vue 3 + Vite 前端 (解析页 / 登录页 / Pinia / APlayer)
 test/                    # node:test 单元/集成测试 (npm test)
+.github/workflows/       # CI: 后端 typecheck + 测试, 前端 typecheck + 测试 + 构建
 ```

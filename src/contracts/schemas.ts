@@ -29,6 +29,8 @@ export const SongLyricQuerySchema = Type.Object({
   mid: nonEmptyString,
   /** "0" 关闭 QRC 解密, 其余按开启处理 */
   decode: Type.Optional(Type.String()),
+  /** text: 把解密后的 QRC XML 还原为纯 LRC 文本 (剥掉逐字时间标记) */
+  format: Type.Optional(Type.String({ enum: ["text"] })),
 });
 export type SongLyricQuery = Static<typeof SongLyricQuerySchema>;
 
