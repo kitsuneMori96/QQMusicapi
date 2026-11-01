@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseContentDispositionFilename } from './http'
 import {
   downloadSong,
   downloadUrl,
   getSongLyric,
   getSongSimilar,
   getSongUrl,
-  parseContentDispositionFilename,
 } from './song'
 
 function mockFetch(data: unknown) {
@@ -76,7 +76,7 @@ describe('song api', () => {
       })),
     )
 
-    await expect(downloadSong('mid1', 'F000')).rejects.toMatchObject({
+    await expect(downloadSong({ mid: 'mid1', code: 'F000' })).rejects.toMatchObject({
       message: '歌曲无版权',
       status: 404,
     })
@@ -106,7 +106,7 @@ describe('song api', () => {
       })),
     )
 
-    await expect(downloadSong('mid1', 'F000')).resolves.toBe('晴天.flac')
+    await expect(downloadSong({ mid: 'mid1', code: 'F000' })).resolves.toBe('晴天.flac')
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(click).toHaveBeenCalledTimes(1)
     expect(document.querySelector('a[download="晴天.flac"]')).toBeNull()
@@ -115,5 +115,32 @@ describe('song api', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock')
     click.mockRestore()
     vi.useRealTimers()
+  })
+
+  it('下载把档位写进地址并把进度透传给上层', async () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn(() => 'blob:mock'),
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => ({
+      ok: true,
+      status: 200,
+      body: null,
+      headers: { get: (_name: string) => null },
+      blob: async () => new Blob(['audio']),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const onProgress = vi.fn()
+    await expect(downloadSong({ mid: '0039MnYb0qxYhV', code: 'F000', onProgress })).resolves.toMatch(
+      /^download-\d+$/,
+    )
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      '/song/download?mid=0039MnYb0qxYhV&type=F000',
+    )
+    expect(onProgress).toHaveBeenCalledWith({ received: 5, total: 5 })
+    click.mockRestore()
   })
 })

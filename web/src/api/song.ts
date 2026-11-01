@@ -1,4 +1,5 @@
-import { ApiError, request } from './http'
+import { request, requestBinary } from './http'
+import type { DownloadProgress } from './http'
 import type {
   LyricData,
   ShareResolveData,
@@ -61,54 +62,21 @@ export function downloadUrl(mid: string, type: string): string {
   return `/song/download?mid=${encodeURIComponent(mid)}&type=${encodeURIComponent(type)}`
 }
 
-/**
- * 解析 Content-Disposition 里的文件名。
- * RFC 5987 的 filename*=UTF-8'' 优先于旧式 filename=。
- */
-export function parseContentDispositionFilename(disposition: string | null): string {
-  if (!disposition) return ''
-
-  const encoded = disposition.match(/filename\*\s*=\s*([^;]+)/i)?.[1]
-  if (encoded) {
-    const raw = encoded.trim().replace(/^UTF-8''/i, '').replace(/^"|"$/g, '')
-    try {
-      return decodeURIComponent(raw)
-    } catch {
-      return raw
-    }
-  }
-
-  const plain = disposition.match(/filename\s*=\s*"([^"]*)"|filename\s*=\s*([^;]+)/i)
-  return (plain?.[1] ?? plain?.[2] ?? '').trim()
+export interface DownloadSongOptions {
+  mid: string
+  /** 音质档位 code（如 F000），必须显式传：后端缺省档不是无损 */
+  code: string
+  signal?: AbortSignal
+  onProgress?: (progress: DownloadProgress) => void
 }
 
 /**
- * fetch 下载：错误时解析信封 message 抛 ApiError，成功时用 blob + 临时 <a> 触发保存。
- * 返回实际文件名，供 UI 提示。
+ * 取回文件并触发浏览器保存。返回实际落盘文件名（来自后端 Content-Disposition）。
+ * 走 requestBinary，所以上游凭证失效时和其他接口一样会触发全局会话失效提示。
  */
-export async function downloadSong(
-  mid: string,
-  code: string,
-  signal?: AbortSignal,
-): Promise<string> {
-  const response = await fetch(downloadUrl(mid, code), { signal })
-
-  if (!response.ok) {
-    let message = ''
-    try {
-      const text = await response.text()
-      const envelope = JSON.parse(text) as { message?: string }
-      message = envelope.message ?? ''
-    } catch {
-      // 非 JSON 错误体：退回状态码提示
-    }
-    throw new ApiError(message || `下载失败 (HTTP ${response.status})`, -1, response.status)
-  }
-
-  const blob = await response.blob()
-  const filename =
-    parseContentDispositionFilename(response.headers.get('content-disposition')) ||
-    `${mid}-${code}`
+export async function downloadSong(options: DownloadSongOptions): Promise<string> {
+  const { mid, code, signal, onProgress } = options
+  const { blob, filename } = await requestBinary(downloadUrl(mid, code), { signal, onProgress })
 
   const objectUrl = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
