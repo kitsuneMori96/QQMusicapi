@@ -378,8 +378,30 @@ function selectSimilar(mid: string): void {
   padding-left: 44px;
 }
 
+/* 歌词卡与相似卡同高：两栏拉伸到等高，内部滚动区各自吃满剩余空间 */
 .parse__grid {
-  align-items: start;
+  align-items: stretch;
+}
+
+.parse__grid :deep(.panel) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.parse__grid :deep(.lyric__box),
+.parse__grid :deep(.similar__list) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.parse__grid :deep(.lyric__box) {
+  max-height: 340px;
+}
+
+/* 相似卡没有标签行，跟着拉伸到的卡高吃满，避免底部留一条空白 */
+.parse__grid :deep(.similar__list) {
+  max-height: none;
 }
 
 .parse__results {
