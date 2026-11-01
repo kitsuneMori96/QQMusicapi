@@ -42,6 +42,30 @@ describe('player store', () => {
     expect(store.nowLabel).toBe('未播放')
   })
 
+  it('load 只装载不发声，play 才置为播放中', () => {
+    const store = usePlayerStore()
+    store.load(base)
+
+    expect(store.current).toMatchObject({ mid: base.mid, qualityCode: 'M800' })
+    expect(store.playing).toBe(false)
+    expect(store.nowLabel).toBe('待播 MP3 320')
+
+    store.play(base)
+    expect(store.playing).toBe(true)
+    expect(store.nowLabel).toBe('▶ MP3 320')
+  })
+
+  it('load 一律从头开始，换曲装载不沿用上一首进度', () => {
+    const store = usePlayerStore()
+    store.play(base)
+    store.setProgress(88, 200)
+
+    store.load({ ...base, mid: 'anotherMid001', name: '另一首' })
+    expect(store.currentTime).toBe(0)
+    expect(store.duration).toBe(0)
+    expect(store.playing).toBe(false)
+  })
+
   it('seek 每次生成新的请求 id，便于重复跳转', () => {
     const store = usePlayerStore()
     store.seek(10)

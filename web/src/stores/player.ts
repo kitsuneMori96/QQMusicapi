@@ -43,6 +43,18 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /**
+   * 装载但不发声：解析成功就把这首歌放进播放器，等用户自己按播放。
+   * 与 play 的区别只在 playing=false；进度一律归零，装载即从头。
+   */
+  function load(track: PlayerTrack): void {
+    current.value = track
+    nowLabel.value = `待播 ${track.qualityLabel}`
+    playing.value = false
+    currentTime.value = 0
+    duration.value = 0
+  }
+
   function clear(): void {
     current.value = null
     nowLabel.value = '未播放'
@@ -76,6 +88,7 @@ export const usePlayerStore = defineStore('player', () => {
     seekRequest,
     activeCode,
     play,
+    load,
     clear,
     setProgress,
     setPlaying,
