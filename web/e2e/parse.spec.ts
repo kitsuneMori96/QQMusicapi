@@ -280,9 +280,8 @@ test('非法输入给出可见提示且不请求接口', async ({ page }) => {
   expect(called).toBe(false)
 })
 
-/** 0.1 秒静音 WAV：让真 APlayer 能挂源并进入 playing，不必依赖后端 */
-const SILENT_WAV =
-  'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
+/** 4 秒静音 WAV：让真 APlayer 有足够时间停留在 playing 态，不依赖后端 */
+const SILENT_WAV = readFileSync(new URL('./fixtures/silence.wav', import.meta.url))
 
 test('解析成功即装载播放器但不发声，点播放才起播', async ({ page }) => {
   // 本地 vendor 真加载：绕过 beforeEach 的空桩，读真实 APlayer 产物
@@ -298,10 +297,13 @@ test('解析成功即装载播放器但不发声，点播放才起播', async ({
       json: {
         code: 0,
         message: 'ok',
-        data: { [MID]: ok ? { url: SILENT_WAV } : { error: `无 ${type}` } },
+        data: { [MID]: ok ? { url: 'https://example.invalid/silence.wav' } : { error: `无 ${type}` } },
       },
     })
   })
+  await page.route('**/silence.wav', (route) =>
+    route.fulfill({ body: SILENT_WAV, contentType: 'audio/wav' }),
+  )
 
   await page.goto('/')
   await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
@@ -311,8 +313,9 @@ test('解析成功即装载播放器但不发声，点播放才起播', async ({
   await expect(page.locator('.aplayer-title')).toHaveText(`夜曲 [SQ 无损]`)
   await expect(page.locator('.aplayer-button.aplayer-play')).toBeVisible()
   await expect(page.locator('.aplayer-button.aplayer-pause')).toHaveCount(0)
+  await expect(page.locator('.player .panel-head')).toContainText('待播 SQ 无损')
 
-  // 展开其他音质，点行内播放才真正起播
+  // 展开其他音质，点行内播放才真正起播（▶ 只给显式点击）
   await page.locator('summary').filter({ hasText: '其他音质' }).click()
   const row = page.locator('.qrow').filter({ hasText: 'MP3 320' })
   await expect(row).toHaveClass(/qrow--ok/)
@@ -320,4 +323,43 @@ test('解析成功即装载播放器但不发声，点播放才起播', async ({
 
   await expect(page.locator('.aplayer-button.aplayer-pause')).toBeVisible()
   await expect(row.getByRole('button', { name: '正在播放' })).toBeVisible()
+  await expect(page.locator('.player .panel-head')).toContainText('▶ MP3 320')
+
+  // 暂停后不能继续写「待播/正在播放」
+  await page.locator('.aplayer-button.aplayer-pause').click()
+  await expect(page.locator('.player .panel-head')).toContainText('已暂停')
+
+  // 用播放器自带按钮续播：沿用档位文案，不出现「待播」
+  await page.locator('.aplayer-button.aplayer-play').click()
+  await expect(page.locator('.player .panel-head')).toContainText('MP3 320')
+  await expect(page.locator('.player .panel-head')).not.toContainText('待播')
+})
+
+test('hires 档位探测成功也不给播放键，只留下载', async ({ page }) => {
+  await page.route('**/song/urls**', (route) => {
+    const type = new URL(route.request().url()).searchParams.get('type') ?? ''
+    const ok = type === 'F000' || type === 'TL01'
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          [MID]: ok
+            ? { url: type === 'TL01' ? 'https://example.invalid/song.nac' : `https://example.invalid/${type}.flac` }
+            : { error: `无 ${type}` },
+        },
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
+  await page.getByRole('button', { name: '解析' }).click()
+  await page.locator('summary').filter({ hasText: '其他音质' }).click()
+
+  const nac = page.locator('.qrow').filter({ hasText: 'AICodec' })
+  await expect(nac).toHaveClass(/qrow--ok/)
+  await expect(nac.getByRole('button', { name: '播放' })).toHaveCount(0)
+  await expect(nac.getByText('仅下载')).toBeVisible()
+  await expect(nac.getByRole('button', { name: '下载' })).toBeEnabled()
 })

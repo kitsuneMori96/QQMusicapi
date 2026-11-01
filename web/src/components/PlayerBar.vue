@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { usePlayerStore, type PlayerTrack } from '@/stores/player'
 import type { APlayerInstance } from '@/types/aplayer'
 
@@ -8,6 +8,24 @@ const container = ref<HTMLElement | null>(null)
 const instance = ref<APlayerInstance | null>(null)
 const unavailable = ref('')
 const mediaError = ref('')
+/** 当前曲目是否真的出过声：用来区分「待播」与「已暂停」 */
+const sounded = ref(false)
+
+/**
+ * 状态栏文案。`▶` 只留给用户显式点行内播放那一刻（store.play 写入）；
+ * 按 APlayer 自带按钮起播沿用装载时的档位文案，暂停后显示「已暂停」。
+ */
+const displayLabel = computed(() => {
+  const track = player.current
+  const raw = player.nowLabel
+  if (!track) return raw
+  if (player.playing) {
+    return raw.startsWith('待播 ') ? track.qualityLabel : raw
+  }
+  if (raw.startsWith('▶ ')) return '已暂停'
+  if (raw.startsWith('待播 ') && sounded.value) return '已暂停'
+  return raw
+})
 
 const BASE_TITLE = '解析 // QQMUSIC'
 
@@ -42,6 +60,7 @@ function onDuration(): void {
 }
 
 function onPlay(): void {
+  sounded.value = true
   player.setPlaying(true)
 }
 
@@ -51,7 +70,7 @@ function onPause(): void {
 
 function onMediaError(): void {
   if (!player.current) return
-  mediaError.value = '音频加载失败，直链可能已过期，请重新解析后播放'
+  mediaError.value = '音频加载失败，直链可能已过期或该容器浏览器不支持，请换档或重新解析后播放'
   player.setPlaying(false)
 }
 
@@ -184,7 +203,13 @@ onMounted(async () => {
 
 watch(
   () => player.current,
-  (track, prev) => applyTrack(track ?? null, prev ?? null),
+  (track, prev) => {
+    // 换曲/换档视为新装载：还没出过声
+    if (!prev || !track || prev.mid !== track.mid || prev.qualityCode !== track.qualityCode) {
+      sounded.value = false
+    }
+    applyTrack(track ?? null, prev ?? null)
+  },
 )
 
 /**
@@ -228,7 +253,7 @@ onBeforeUnmount(() => {
       <span class="label">播放器</span>
       <span class="micro text-dim">APLAYER</span>
       <span class="spacer" />
-      <span class="micro" :class="player.current ? 'text-blue' : 'text-faint'">{{ player.nowLabel }}</span>
+      <span class="micro" :class="player.current ? 'text-blue' : 'text-faint'">{{ displayLabel }}</span>
     </div>
 
     <div class="player__body">

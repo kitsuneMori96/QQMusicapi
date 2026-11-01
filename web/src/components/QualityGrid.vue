@@ -29,6 +29,20 @@ const failedCount = computed(
   () => rows.value.filter((q) => props.states[q.code]?.status === 'err').length,
 )
 
+/** 浏览器解得动的容器：hires 整组（含 TL01 的 .nac）探测 OK 但放不了，只留下载 */
+const PLAYABLE_EXTS: ReadonlySet<string> = new Set(['flac', 'ogg', 'mp3', 'm4a'])
+
+/**
+ * 直链可播放判定：探测 OK 还不够，容器得是浏览器能解码的。
+ * `.nac` 是腾讯自研 AICodec，Chromium 直接报 MEDIA_ERR_SRC_NOT_SUPPORTED。
+ */
+function isPlayableUrl(quality: Quality, state: QualityState | undefined): boolean {
+  if (state?.status !== 'ok' || !state.url) return false
+  if (quality.group === 'hires') return false
+  if (!PLAYABLE_EXTS.has(quality.ext)) return false
+  return !/\.nac(?:[?#]|$)/i.test(state.url)
+}
+
 function downloading(code: string): boolean {
   if (!parse.mid) return false
   return downloads.active.some((t) => t.mid === parse.mid && t.code === code)
@@ -93,8 +107,9 @@ function statusText(state: QualityState | undefined): string {
               重试
             </button>
             <button
+              v-if="isPlayableUrl(q, states[q.code])"
               class="qrow__btn"
-              :disabled="states[q.code]?.status !== 'ok' || activeCode === q.code"
+              :disabled="activeCode === q.code"
               @click="emit('play', q)"
             >
               {{
@@ -105,6 +120,13 @@ function statusText(state: QualityState | undefined): string {
                   : '播放'
               }}
             </button>
+            <span
+              v-else-if="states[q.code]?.status === 'ok'"
+              class="qrow__note"
+              title="该容器浏览器无法解码，请下载后用本地播放器"
+            >
+              仅下载
+            </span>
             <button
               class="qrow__btn"
               :disabled="states[q.code]?.status !== 'ok' || downloading(q.code)"
@@ -207,6 +229,14 @@ function statusText(state: QualityState | undefined): string {
   color: var(--text-faint);
   border-color: var(--line);
   cursor: not-allowed;
+}
+
+.qrow__note {
+  padding: 0 3px;
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .qrow--ok .qrow__label {
