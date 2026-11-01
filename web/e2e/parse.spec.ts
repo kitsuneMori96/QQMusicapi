@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
 const MID = '002kR3lm1nTxkV'
@@ -125,7 +126,7 @@ test('粘贴即解析：首屏只探首选档，其他音质展开后才探测',
   await expect(page.locator('.panel-head').filter({ hasText: '音质直链' })).toContainText('1 / 16')
   expect(calls).toHaveLength(17)
 
-  await page.locator('summary').filter({ hasText: '歌词与相似曲目' }).click()
+  // 歌词与相似曲目内联，不需要展开
   await expect(page.locator('.lyric__lines')).toContainText('第一行')
   await expect(page.locator('.similar__row')).toHaveCount(2)
 })
@@ -277,4 +278,46 @@ test('非法输入给出可见提示且不请求接口', async ({ page }) => {
 
   await expect(page.getByText('无法识别 songmid')).toBeVisible()
   expect(called).toBe(false)
+})
+
+/** 0.1 秒静音 WAV：让真 APlayer 能挂源并进入 playing，不必依赖后端 */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
+
+test('解析成功即装载播放器但不发声，点播放才起播', async ({ page }) => {
+  // 本地 vendor 真加载：绕过 beforeEach 的空桩，读真实 APlayer 产物
+  const vendor = readFileSync(new URL('../../src/public/vendor/APlayer.min.js', import.meta.url), 'utf8')
+  await page.route('**/vendor/APlayer.min.js', (route) =>
+    route.fulfill({ body: vendor, contentType: 'application/javascript' }),
+  )
+
+  await page.route('**/song/urls**', (route) => {
+    const type = new URL(route.request().url()).searchParams.get('type') ?? ''
+    const ok = type === 'F000' || type === 'M800'
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { [MID]: ok ? { url: SILENT_WAV } : { error: `无 ${type}` } },
+      },
+    })
+  })
+
+  await page.goto('/')
+  await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
+  await page.getByRole('button', { name: '解析' }).click()
+
+  // 装载：标题已是这首歌，但按钮仍是「播放」态（未发声）
+  await expect(page.locator('.aplayer-title')).toHaveText(`夜曲 [SQ 无损]`)
+  await expect(page.locator('.aplayer-button.aplayer-play')).toBeVisible()
+  await expect(page.locator('.aplayer-button.aplayer-pause')).toHaveCount(0)
+
+  // 展开其他音质，点行内播放才真正起播
+  await page.locator('summary').filter({ hasText: '其他音质' }).click()
+  const row = page.locator('.qrow').filter({ hasText: 'MP3 320' })
+  await expect(row).toHaveClass(/qrow--ok/)
+  await row.getByRole('button', { name: '播放' }).click()
+
+  await expect(page.locator('.aplayer-button.aplayer-pause')).toBeVisible()
+  await expect(row.getByRole('button', { name: '正在播放' })).toBeVisible()
 })

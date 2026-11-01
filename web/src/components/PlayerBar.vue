@@ -153,7 +153,9 @@ function applyTrack(track: PlayerTrack | null, prev: PlayerTrack | null): void {
 
   ap.pause()
   ap.list.clear()
-  ap.list.add([toAudio(track)], true)
+  // APlayer.List.add 只收一个参数，第二个 play 标记会被忽略；起播由下面显式决定
+  ap.list.add([toAudio(track)])
+  if (player.playing) void ap.play()
 }
 
 onMounted(async () => {
@@ -183,6 +185,23 @@ onMounted(async () => {
 watch(
   () => player.current,
   (track, prev) => applyTrack(track ?? null, prev ?? null),
+)
+
+/**
+ * 装载（load，playing=false）与起播（play，playing=true）由 store 决定。
+ * current 的 watch 在「同曲同档」时会提前返回，所以这里负责把 play() 落到实处。
+ */
+watch(
+  () => player.playing,
+  (playing) => {
+    const ap = instance.value
+    if (!ap) return
+    if (playing) {
+      if (ap.audio.paused) void ap.play()
+    } else if (!ap.audio.paused) {
+      ap.pause()
+    }
+  },
 )
 
 watch(

@@ -7,7 +7,7 @@ import LyricPanel from '@/components/LyricPanel.vue'
 import SimilarList from '@/components/SimilarList.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import { useParseStore } from '@/stores/parse'
-import { usePlayerStore } from '@/stores/player'
+import { usePlayerStore, type PlayerTrack } from '@/stores/player'
 import { useDownloadsStore } from '@/stores/downloads'
 import { useNoticeStore } from '@/stores/notice'
 import { QUALITIES, QUALITY_TOTAL, qualityOf, type Quality } from '@/lib/qualities'
@@ -159,31 +159,53 @@ watch(
   },
 )
 
+/**
+ * 解析成功就装载（不出声）：primary 出来后才装载，避免抢在探测完成前。
+ * 同一首歌不重复装载，用户手动切过的档位不会被覆盖。
+ */
+watch(
+  () => [parse.mid, parse.primary?.code] as const,
+  ([nextMid, code]) => {
+    if (!nextMid || !code) return
+    if (player.current?.mid === nextMid) return
+    const track = trackFor(code)
+    if (track) player.load(track)
+  },
+  { immediate: true },
+)
+
+/** 组装播放器轨道：直链未就绪或没有 mid 时返回 null */
+function trackFor(code: string): PlayerTrack | null {
+  const info = parse.urlOf(code)
+  const detail = parse.track
+  if (!info?.url || !parse.mid) return null
+  const artist =
+    (detail?.singer ?? [])
+      .map((s) => s.name ?? '')
+      .filter(Boolean)
+      .join(' / ') || '—'
+  return {
+    mid: parse.mid,
+    name: detail?.name || parse.mid,
+    artist,
+    url: info.url,
+    cover: coverUrl(detail?.album?.mid),
+    qualityLabel: qualityOf(code)?.label ?? code,
+    qualityCode: code,
+  }
+}
+
 async function play(quality: Quality): Promise<void> {
   const ready = await parse.ensureProbed(quality.code)
-  const info = parse.urlOf(quality.code)
-  if (!ready || !info?.url) {
+  const track = ready ? trackFor(quality.code) : null
+  if (!track) {
     notice.warn(
       `「${quality.label}」暂不可播放`,
       parse.qualities[quality.code]?.error || '未取到可用直链',
     )
     return
   }
-  const track = parse.track
-  const artist =
-    (track?.singer ?? [])
-      .map((s) => s.name ?? '')
-      .filter(Boolean)
-      .join(' / ') || '—'
-  player.play({
-    mid: parse.mid,
-    name: track?.name || parse.mid,
-    artist,
-    url: info.url,
-    cover: coverUrl(track?.album?.mid),
-    qualityLabel: quality.label,
-    qualityCode: quality.code,
-  })
+  player.play(track)
 }
 
 function retry(quality: Quality): void {
@@ -292,29 +314,21 @@ function selectSimilar(mid: string): void {
           />
         </details>
 
-        <details class="fold">
-          <summary class="fold__head">
-            <span class="label">歌词与相似曲目</span>
-            <span class="micro text-dim">折叠区</span>
-            <span class="spacer" />
-            <span class="micro text-faint">试听可用上方播放器</span>
-          </summary>
-          <div class="grid-2 parse__grid">
-            <LyricPanel
-              :lyric="parse.lyric"
-              :loading="parse.lyricLoading"
-              :current-time="seekable ? player.currentTime : -1"
-              :seekable="seekable"
-              @seek="seek"
-            />
-            <SimilarList
-              :items="parse.similar"
-              :loading="parse.similarLoading"
-              :active-mid="parse.mid"
-              @select="selectSimilar"
-            />
-          </div>
-        </details>
+        <div class="grid-2 parse__grid">
+          <LyricPanel
+            :lyric="parse.lyric"
+            :loading="parse.lyricLoading"
+            :current-time="seekable ? player.currentTime : -1"
+            :seekable="seekable"
+            @seek="seek"
+          />
+          <SimilarList
+            :items="parse.similar"
+            :loading="parse.similarLoading"
+            :active-mid="parse.mid"
+            @select="selectSimilar"
+          />
+        </div>
       </template>
 
       <section v-else class="panel intro">
