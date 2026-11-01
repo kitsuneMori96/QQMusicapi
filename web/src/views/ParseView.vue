@@ -256,7 +256,7 @@ function selectSimilar(mid: string): void {
 
             <label class="primary__pref">
               <span class="label">首选音质</span>
-              <select v-model="preferredModel" class="select">
+              <select v-model="preferredModel" class="select" :disabled="pending">
                 <option v-for="q in QUALITIES" :key="q.code" :value="q.code">
                   {{ q.label }} · {{ q.code }}
                 </option>
@@ -414,6 +414,11 @@ function selectSimilar(mid: string): void {
 .select:focus {
   outline: none;
   border-color: var(--blue);
+}
+
+.select:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
 }
 
 .primary__hint {

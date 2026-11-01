@@ -151,17 +151,37 @@ test('首选档不可取时主按钮按阶梯降级并写明原因', async ({ pa
   await expect(page.locator('.primary__hint')).toContainText('「SQ 无损」不可取，已切到「OGG 320」')
 })
 
-test('首选音质选择器写入 localStorage 并立即切换主按钮', async ({ page }) => {
+test('首选音质选择器写入 localStorage，切换期间不闪错误态', async ({ page }) => {
+  await page.route('**/song/urls**', async (route) => {
+    const type = new URL(route.request().url()).searchParams.get('type') ?? ''
+    if (type === 'M500') await new Promise((resolve) => setTimeout(resolve, 300))
+    const ok = type === 'F000' || type === 'M800' || type === 'M500'
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { [MID]: ok ? { url: `https://example.invalid/${type}` } : { error: `无 ${type}` } },
+      },
+    })
+  })
+
   await page.goto('/')
   await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
   await page.getByRole('button', { name: '解析' }).click()
   await expect(page.getByRole('button', { name: '↓ 下载 SQ 无损' })).toBeEnabled()
 
-  await page.locator('.primary__pref select').selectOption('M800')
-  await expect(page.getByRole('button', { name: '↓ 下载 MP3 320' })).toBeEnabled()
+  const select = page.locator('.primary__pref select')
+  await select.selectOption('M500')
+
+  // 探测窗口内必须是 pending 文案，不能出现「首选音质不可用」
+  await expect(page.getByRole('button', { name: '探测首选音质…' })).toBeDisabled()
+  await expect(page.locator('.primary__hint')).not.toContainText('不可用')
+  await expect(page.getByRole('button', { name: '↓ 下载 MP3 128' })).toBeEnabled()
+  await expect(page.locator('.primary__hint')).not.toContainText('不可用')
+
   expect(
     await page.evaluate(() => localStorage.getItem('qqm.v1.preferredQuality')),
-  ).toBe('M800')
+  ).toBe('M500')
 })
 
 test('下载点击一次才落盘，下载条显示成功', async ({ page }) => {

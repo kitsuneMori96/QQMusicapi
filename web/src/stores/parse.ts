@@ -203,7 +203,15 @@ export const useParseStore = defineStore('parse', () => {
     preferred.value = code
     savePreferredQuality(code)
     if (!mid.value || phase.value === 'parsing') return
-    await probeLadderFrom(code)
+
+    // 新首选档探测期间复用 parsing 态：避免 primary 短暂为 null 时
+    // 主按钮/副标题闪出「首选音质不可用」，也顺带挡住并发的重试。
+    phase.value = 'parsing'
+    try {
+      await probeLadderFrom(code)
+    } finally {
+      if (phase.value === 'parsing') phase.value = primary.value ? 'ready' : 'error'
+    }
   }
 
   async function loadLyric(

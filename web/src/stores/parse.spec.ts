@@ -286,6 +286,23 @@ describe('parse store', () => {
     expect(localStorage.getItem('qqm.v1.preferredQuality')).toBe('M800')
     expect(store.qualities.M800?.status).toBe('ok')
     expect(store.primary).toEqual({ code: 'M800', fellBackFrom: null })
+    expect(store.phase).toBe('ready')
+  })
+
+  it('切换首选音质期间保持 parsing，不闪错误态', async () => {
+    mockBackend()
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    const switching = store.setPreferred('O801')
+    // 新首选档还在探测：phase 必须是 parsing，避免 UI 把 primary=null 当失败
+    expect(store.phase).toBe('parsing')
+    expect(store.primary).toBeNull()
+
+    await switching
+    expect(store.phase).toBe('ready')
+    expect(store.primary).toEqual({ code: 'M800', fellBackFrom: 'O801' })
   })
 
   it('单条重试只刷新目标音质', async () => {
