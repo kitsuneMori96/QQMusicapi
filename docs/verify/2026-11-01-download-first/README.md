@@ -64,3 +64,31 @@ HEAD = `bbfe551`；`typecheck` / `vitest 114` / `build` / `playwright 13` 全绿
    `AI00 / Q00x / D004 / DT03` 这批探测直接 FAIL，不会走到这一步。
    处置：`QualityGrid` 里加 `isPlayableUrl`（按扩展名 + 排除 hires 整组），
    `TL01` 这类行只留下载；`PlayerBar` 的直链过期文案改为「直链可能已过期或该容器浏览器不支持」。
+
+## 修复后复验（HEAD `2d49913`，真后端 26/26 通过）
+
+两条缺陷的修复已落地并复验：状态栏文案走 `PlayerBar.displayLabel`
+（`▶` 只给显式行内播放，自带按钮起播沿用档位文案，暂停显示「已暂停」）；
+`QualityGrid.isPlayableUrl` 用「扩展名白名单 + 排除 hires 整组 + 兜底 `.nac` 正则」
+决定播放键，`TL01` 行只剩「仅下载 + 下载」。
+
+`gates on 2d49913`：`typecheck` 0、`vitest` 13 文件 116 用例全过、`build` 0、
+`playwright` 15 用例全过（无头 + 路由桩）。
+
+真后端（`:3300` + `:5273` + Chromium，非桩）定点断言 26 条全过，关键几条：
+
+| 断言 | 实测 |
+| --- | --- |
+| 装载不出声 | `title=晴天 [SQ 无损]`、`audio.paused=true`、`currentTime=0`、状态栏「待播 SQ 无损」、`/song/download` 0 次 |
+| 自带按钮起播的文案 | `paused` 转 false 后状态栏为 `SQ 无损`（不再是「待播」），点暂停后为 `已暂停` |
+| `TL01 / AICodec` | 行内播放键 0 个，行文本 `TL01 AICodec OK 仅下载 下载` |
+| 歌词点击 seek | 点第 13 行 → `audio.currentTime=27.01` 并自动起播，`.lyric__line--active` 命中 1 个 |
+| 行内播放切档 | 点 OGG 640 → `paused=false`、`晴天 [SQ 无损]` → `晴天 [OGG 640]`、行内按钮变「正在播放」 |
+| 换歌 | 点相似曲目 → 播放器跟随换成 `热烈盛开 [SQ 无损]`，仍是装载态不出声 |
+
+按下播放后「真听得到声、无 1 秒空白」这条在本机无法验（无音频输出设备，见上节对照实验），
+由 gobi 在本地浏览器确认无空白；人耳验收仍是未闭合项。
+
+复验脚本 `/tmp/player-verify.mjs`（临时，不进仓库）。它读 `audio` 元素的方式：
+`addInitScript` 劫持 `document.createElement('audio')` 把元素存进 `window.__audios`——
+因为 APlayer 从不把 `audio` 挂进 DOM，常规选择器一律取不到。
