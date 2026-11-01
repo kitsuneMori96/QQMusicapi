@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
-import { isAbortError } from '@/api/http'
+import { isAbortError, probeDirectLink } from '@/api/http'
 import {
   getSongDetail,
   getSongLyric,
@@ -139,6 +139,17 @@ export const useParseStore = defineStore('parse', () => {
       if (token !== seq) return false
       const info: PlayUrlInfo | undefined = map[songMid]
       if (info?.url) {
+        // 有 url ≠ 取得出：上游会给一条 404 的直链（如 OGG 档未上传），
+        // 直接当 ok 会让播放器在 media 元素上报 MEDIA_ERR_SRC_NOT_SUPPORTED
+        if (!(await probeDirectLink(info.url))) {
+          if (token !== seq) return false
+          setQuality(code, {
+            status: 'err',
+            url: undefined,
+            error: '直链不可用（CDN 404），已跳过该档',
+          })
+          return false
+        }
         setQuality(code, { status: 'ok', url: info.url, error: undefined })
         return true
       }

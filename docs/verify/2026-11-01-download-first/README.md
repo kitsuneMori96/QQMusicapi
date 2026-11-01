@@ -92,3 +92,27 @@ HEAD = `bbfe551`；`typecheck` / `vitest 114` / `build` / `playwright 13` 全绿
 复验脚本 `/tmp/player-verify.mjs`（临时，不进仓库）。它读 `audio` 元素的方式：
 `addInitScript` 劫持 `document.createElement('audio')` 把元素存进 `window.__audios`——
 因为 APlayer 从不把 `audio` 挂进 DOM，常规选择器一律取不到。
+
+## 第三条缺陷：有 url ≠ 取得出（mid `000laFN732leOD`）
+
+用户贴 `?mid=000laFN732leOD` 打开 3300 的内置前端，看到「音频加载失败，直链可能已过期或该容器
+浏览器不支持，请换档或重新解析后播放」。链路是：
+
+1. `F000` / `O801` 上游都回「无权限 / 需要 VIP」，阶梯降级到 `O800`；
+2. `O800` 的 `/song/urls` 回了一条 `http://aqqmusic.tc.qq.com/O800...0q.ogg?vkey=...`，
+   探测把它当 `ok`，主按钮显示 `↓ 下载 OGG 320`，播放器装载这条直链；
+3. 该直链 **HEAD 404**（文件没上传到 CDN；同曲 `M800`/`M500` 的 mp3 都是 206），
+   于是 media 元素报 `MEDIA_ERR_SRC_NOT_SUPPORTED`，界面落到那句 fallback。
+
+修法是探测阶段加一道存活检查：`api/http.ts` 的 `probeDirectLink` 用 HEAD 探一次
+（HEAD 是 CORS 简单方法，不触发预检，不耗流量），只有 CDN 明确回 404/403 才算死链，
+超时 / 断网 / 读不到响应一律放行，避免网络抖动误杀能播的档位。
+`parse.ts` 里探测到死链就写 `err`（文案「直链不可用（CDN 404），已跳过该档」）并继续沿阶梯降级，
+下载也一并被排除，不会出现「能选不能下」。
+
+复验（同一条链接，`s7-dead-link-404.png`）：`O800` 判死 → 落到 `M800`，
+主按钮 `↓ 下载 MP3 320`、副标题「「SQ 无损」不可取，已切到「MP3 320」」、
+播放器标题 `Good-bye crisis [MP3 320]`、`readyState=1`、无错误文案。
+
+回归：`typecheck` 0、`vitest` 120 用例（新增 `probeDirectLink` 3 条 + parse store「有 url 但直链 404」1 条）、
+`build` 0、`playwright` 15 用例全过。

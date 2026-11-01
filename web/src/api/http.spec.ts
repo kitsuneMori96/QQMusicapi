@@ -3,6 +3,7 @@ import {
   ApiError,
   isAbortError,
   isAuthError,
+  probeDirectLink,
   request,
   requestBinary,
   setAuthErrorHandler,
@@ -227,6 +228,42 @@ describe('requestBinary', () => {
       code: -1,
       status: 500,
     })
+  })
+})
+
+describe('probeDirectLink', () => {
+  const CDN = 'http://aqqmusic.tc.qq.com/O800002zOFB80Sxo0q.ogg?vkey=x'
+
+  it('HEAD 用简单方法发一次请求，200 视为可取', async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(probeDirectLink(CDN)).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'HEAD' })
+  })
+
+  it('CDN 返回 404 时判为不可取', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 404 })),
+    )
+
+    await expect(probeDirectLink(CDN)).resolves.toBe(false)
+  })
+
+  it('网络错误 / 超时 / CORS 读不到响应时放行，不误杀可能能播的档位', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+
+    await expect(probeDirectLink(CDN)).resolves.toBe(true)
   })
 })
 

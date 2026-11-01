@@ -175,6 +175,25 @@ export function parseContentDispositionFilename(disposition: string | null): str
 }
 
 /**
+ * 直链是否真能取到字节。
+ * 上游对「有权限」的音质会给出一条 url，但文件本身可能是 404（例如 OGG 档没上传），
+ * 光看 url 非空会把它当成可取，播放器随后在 media 元素上炸成 MEDIA_ERR_SRC_NOT_SUPPORTED。
+ * 用 HEAD 而不是带 Range 的 GET：HEAD 属于 CORS 简单方法，不触发预检，
+ * 一次往返就能区分 200 与 404，且不消耗流量。
+ *
+ * 只把 CDN 明确的 404/403 判成死链；超时、断网、CORS 读不到响应一律放行，
+ * 免得网络抖动或 CDN 没给 ACAO 时把能播的档位误杀（宁可退回旧行为）。
+ */
+export async function probeDirectLink(url: string, timeoutMs = 8_000): Promise<boolean> {
+  try {
+    const response = await fetchWithTimeout(url, { method: 'HEAD', cache: 'no-store' }, timeoutMs)
+    return response.status !== 404 && response.status !== 403
+  } catch {
+    return true
+  }
+}
+
+/**
  * 二进制通道：错误仍是后端信封（{code,message}），据此抛 ApiError 并触发会话失效回调。
  * 响应体可流式读取时逐块上报进度，否则整块取 blob。
  */

@@ -21,6 +21,8 @@ function mockBackend(
     okTypes?: readonly string[]
     resolveFails?: boolean
     resolveMid?: string
+    /** 这些直链在 HEAD 存活探测里返回 404（模拟「有 url 但文件不存在」） */
+    deadUrls?: readonly string[]
   } = {},
 ) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -83,6 +85,10 @@ function mockBackend(
           { id: 3, mid: 'similarMid02', name: '相似曲 2', singer: [{ name: '丁' }, { name: '戊' }] },
         ],
       })
+    }
+    if (url.startsWith('https://cdn.example/')) {
+      const dead = (options.deadUrls ?? []).some((fragment) => url.includes(fragment))
+      return { ok: !dead, status: dead ? 404 : 200 } as unknown as Response
     }
     return jsonResponse({})
   })
@@ -198,6 +204,22 @@ describe('parse store', () => {
     expect(store.primary).toEqual({ code: 'O800', fellBackFrom: 'F000' })
     expect(store.fellBackFrom).toBe('F000')
     expect(store.qualities.DT03?.status).toBe('idle')
+  })
+
+  it('有 url 但直链 404：不当作可取，继续沿阶梯降级', async () => {
+    const fetchMock = mockBackend({ okTypes: ['F000', 'M800'], deadUrls: ['/F000.flac'] })
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    const heads = fetchMock.mock.calls
+      .map((call) => (call as unknown[])[1] as RequestInit | undefined)
+      .filter((init) => init?.method === 'HEAD')
+    expect(heads.length).toBeGreaterThan(0)
+
+    expect(store.qualities.F000?.status).toBe('err')
+    expect(store.qualities.F000?.error).toContain('直链不可用')
+    expect(store.primary).toEqual({ code: 'M800', fellBackFrom: 'F000' })
   })
 
   it('展开其他音质时只补探未碰过的档位', async () => {
@@ -323,6 +345,9 @@ describe('parse store', () => {
         return type === 'C200'
           ? jsonResponse({ [key]: { url: 'https://cdn.example/C200.m4a' } })
           : jsonResponse({ [key]: { error: '仍不可用' } })
+      }
+      if (url.startsWith('https://cdn.example/')) {
+        return { ok: true, status: 200 } as unknown as Response
       }
       return jsonResponse({})
     })
