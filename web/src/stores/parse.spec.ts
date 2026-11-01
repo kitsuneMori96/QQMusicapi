@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useParseStore } from './parse'
 import { useNoticeStore } from './notice'
+import { DEFAULT_PREFERRED_CODE } from '@/lib/qualities'
+import { savePreferredQuality } from '@/lib/preference'
 
 const MID = '002kR3lm1nTxkV'
 
@@ -16,6 +18,7 @@ function mockBackend(
   options: {
     detailFails?: boolean
     allUrlsFail?: boolean
+    okTypes?: readonly string[]
     resolveFails?: boolean
     resolveMid?: string
   } = {},
@@ -61,10 +64,11 @@ function mockBackend(
       const params = new URL(`http://x${url}`).searchParams
       const type = params.get('type') ?? ''
       const key = params.get('mids') ?? MID
+      const okTypes = options.okTypes ?? ['F000', 'M800']
       return jsonResponse(
         options.allUrlsFail
           ? { [key]: { error: '无版权' } }
-          : type === 'F000' || type === 'M800'
+          : okTypes.includes(type)
             ? { [key]: { url: `https://cdn.example/${type}.flac` } }
             : { [key]: { error: `不支持 ${type}` } },
       )
@@ -90,6 +94,8 @@ describe('parse store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.unstubAllGlobals()
+    localStorage.clear()
+    savePreferredQuality(DEFAULT_PREFERRED_CODE)
   })
 
   it('无法识别 mid 时不发请求，只提示', async () => {
@@ -123,8 +129,11 @@ describe('parse store', () => {
     expect(store.mid).toBe(MID)
     expect(store.phase).toBe('ready')
     expect(store.track?.name).toBe('测试曲目')
-    expect(store.resolved).toBe(2)
-    expect(store.urlOf('M800')?.url).toContain('M800.flac')
+    // 首屏只探首选档，其他 16 档保持 idle
+    expect(store.resolved).toBe(1)
+    expect(store.primary).toEqual({ code: 'F000', fellBackFrom: null })
+    expect(store.qualities.M800?.status).toBe('idle')
+    expect(store.urlOf('M800')).toBeUndefined()
   })
 
   it('整段分享文案里的链接同样可用', async () => {
@@ -150,26 +159,66 @@ describe('parse store', () => {
     expect(useNoticeStore().items.some((n) => n.level === 'error')).toBe(true)
   })
 
-  it('完整解析：详情 / 17 档直链 / 歌词 / 相似', async () => {
-    mockBackend()
+  it('首屏只探测首选档，详情 / 歌词 / 相似照常', async () => {
+    const fetchMock = mockBackend()
     const store = useParseStore()
     store.input = `https://y.qq.com/n/ryqq/songDetail/${MID}`
     await store.parse()
+
+    const urlCalls = fetchMock.mock.calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.startsWith('/song/urls'))
+    expect(urlCalls).toHaveLength(1)
+    expect(urlCalls[0]).toContain('type=F000')
 
     expect(store.mid).toBe(MID)
     expect(store.phase).toBe('ready')
     expect(store.track?.name).toBe('测试曲目')
     expect(store.qualities.F000).toEqual({ status: 'ok', url: 'https://cdn.example/F000.flac' })
-    expect(store.qualities.C200?.status).toBe('err')
-    expect(store.qualities.C200?.error).toContain('不支持 C200')
-    expect(store.resolved).toBe(2)
+    expect(store.qualities.C200?.status).toBe('idle')
+    expect(store.resolved).toBe(1)
+    expect(store.primary).toEqual({ code: 'F000', fellBackFrom: null })
     expect(store.lyric?.lyric).toContain('歌词')
     expect(store.similar.map((s) => s.singer)).toEqual(['丙', '丁 / 戊'])
     expect(store.urlOf('F000')?.url).toContain('F000.flac')
     expect(store.urlOf('C200')).toBeUndefined()
   })
 
-  it('详情失败不阻断直链与歌词', async () => {
+  it('首选档不可取时按阶梯降级，hires 不进降级路径', async () => {
+    const fetchMock = mockBackend({ okTypes: ['O800'] })
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    const types = fetchMock.mock.calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.startsWith('/song/urls'))
+      .map((url) => new URL(`http://x${url}`).searchParams.get('type'))
+    expect(types).toEqual(['F000', 'O801', 'O800'])
+    expect(store.primary).toEqual({ code: 'O800', fellBackFrom: 'F000' })
+    expect(store.fellBackFrom).toBe('F000')
+    expect(store.qualities.DT03?.status).toBe('idle')
+  })
+
+  it('展开其他音质时只补探未碰过的档位', async () => {
+    const fetchMock = mockBackend()
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    await store.probeOthers()
+    const types = fetchMock.mock.calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.startsWith('/song/urls'))
+      .map((url) => new URL(`http://x${url}`).searchParams.get('type'))
+    // 首选 F000 不重复探测，其余 16 档各一次
+    expect(types).toHaveLength(17)
+    expect(types.filter((type) => type === 'F000')).toHaveLength(1)
+    expect(store.qualities.C200?.status).toBe('err')
+    expect(store.qualities.DT03?.status).toBe('err')
+  })
+
+  it('详情失败不阻断首选档与歌词', async () => {
     mockBackend({ detailFails: true })
     const store = useParseStore()
     store.input = MID
@@ -178,7 +227,8 @@ describe('parse store', () => {
     expect(store.detailError).toContain('上游超时')
     expect(store.track).toBeNull()
     expect(store.phase).toBe('ready')
-    expect(store.resolved).toBe(2)
+    expect(store.resolved).toBe(1)
+    expect(store.primary?.code).toBe('F000')
     expect(store.similar).toHaveLength(0)
   })
 
@@ -198,12 +248,44 @@ describe('parse store', () => {
     const store = useParseStore()
     store.input = MID
     await store.parse()
-    expect(store.resolved).toBe(2)
+    expect(store.resolved).toBe(1)
 
     store.input = 'anotherMid001'
     await store.parse()
     expect(store.mid).toBe('anotherMid001')
-    expect(store.resolved).toBe(2)
+    expect(store.resolved).toBe(1)
+  })
+
+  it('ensureProbed 已 ok 不重复请求，idle 探测后才可播放', async () => {
+    const fetchMock = mockBackend()
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    expect(await store.ensureProbed('F000')).toBe(true)
+    expect(
+      fetchMock.mock.calls.filter(
+        (call) =>
+          String(call[0]).startsWith('/song/urls') && String(call[0]).includes('type=F000'),
+      ),
+    ).toHaveLength(1)
+
+    expect(await store.ensureProbed('M800')).toBe(true)
+    expect(store.qualities.M800?.status).toBe('ok')
+    expect(store.urlOf('M800')?.url).toContain('M800.flac')
+  })
+
+  it('切换首选音质写入偏好并探测新档位', async () => {
+    mockBackend()
+    const store = useParseStore()
+    store.input = MID
+    await store.parse()
+
+    await store.setPreferred('M800')
+    expect(store.preferred).toBe('M800')
+    expect(localStorage.getItem('qqm.v1.preferredQuality')).toBe('M800')
+    expect(store.qualities.M800?.status).toBe('ok')
+    expect(store.primary).toEqual({ code: 'M800', fellBackFrom: null })
   })
 
   it('单条重试只刷新目标音质', async () => {
@@ -211,6 +293,7 @@ describe('parse store', () => {
     const store = useParseStore()
     store.input = MID
     await store.parse()
+    await store.probeOthers()
     expect(store.qualities.C200?.status).toBe('err')
     const resolvedBefore = store.qualities.F000
 

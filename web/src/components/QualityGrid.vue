@@ -1,29 +1,47 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { QUALITIES, type Quality } from '@/lib/qualities'
-import type { QualityState } from '@/stores/parse'
+import { useDownloadsStore } from '@/stores/downloads'
+import { useParseStore, type QualityState } from '@/stores/parse'
 
 const props = defineProps<{
   states: Record<string, QualityState>
-  resolved: number
-  total?: number
-  downloading?: Record<string, boolean>
+  /** 当前主按钮档位，不在折叠列表里重复展示 */
+  excludeCode?: string
   activeCode?: string
   playing?: boolean
 }>()
 
 const emit = defineEmits<{
   play: [quality: Quality]
-  download: [quality: Quality]
   retry: [quality: Quality]
   'retry-failed': []
 }>()
 
-const total = computed(() => props.total ?? QUALITIES.length)
+const parse = useParseStore()
+const downloads = useDownloadsStore()
+
+const rows = computed(() => QUALITIES.filter((q) => q.code !== props.excludeCode))
+const resolved = computed(() => rows.value.filter((q) => props.states[q.code]?.status === 'ok').length)
+const total = computed(() => rows.value.length)
 
 const failedCount = computed(
-  () => QUALITIES.filter((q) => props.states[q.code]?.status === 'err').length,
+  () => rows.value.filter((q) => props.states[q.code]?.status === 'err').length,
 )
+
+function downloading(code: string): boolean {
+  if (!parse.mid) return false
+  return downloads.active.some((t) => t.mid === parse.mid && t.code === code)
+}
+
+function download(quality: Quality): void {
+  if (!parse.mid) return
+  downloads.start({
+    mid: parse.mid,
+    code: quality.code,
+    label: parse.track?.name || parse.mid,
+  })
+}
 
 function statusText(state: QualityState | undefined): string {
   switch (state?.status) {
@@ -53,7 +71,7 @@ function statusText(state: QualityState | undefined): string {
     <div class="panel-body panel-body--flush">
       <div class="qgrid">
         <div
-          v-for="q in QUALITIES"
+          v-for="q in rows"
           :key="q.code"
           class="qrow"
           :class="[
@@ -89,10 +107,10 @@ function statusText(state: QualityState | undefined): string {
             </button>
             <button
               class="qrow__btn"
-              :disabled="states[q.code]?.status !== 'ok' || downloading?.[q.code]"
-              @click="emit('download', q)"
+              :disabled="states[q.code]?.status !== 'ok' || downloading(q.code)"
+              @click="download(q)"
             >
-              {{ downloading?.[q.code] ? '下载中…' : '下载' }}
+              {{ downloading(q.code) ? '下载中…' : '下载' }}
             </button>
           </span>
         </div>

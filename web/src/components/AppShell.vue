@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import StatusBar from './StatusBar.vue'
 import ErrorBar from './ErrorBar.vue'
+import DownloadBar from './DownloadBar.vue'
 import { useStatusStore } from '@/stores/status'
 
 const status = useStatusStore()
@@ -46,6 +47,7 @@ onBeforeUnmount(() => {
 
     <StatusBar />
     <ErrorBar />
+    <DownloadBar />
   </div>
 </template>
 

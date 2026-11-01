@@ -46,16 +46,17 @@ web/
 │  │  ├─ tokens.css        # 颜色/字号/间距全部令牌化
 │  │  └─ terminal.css      # panel/label/btn/input/tag 等原语
 │  ├─ api/
-│  │  ├─ http.ts           # {code,message,data} 信封 + 超时
+│  │  ├─ http.ts           # {code,message,data} 信封 + 二进制下载通道
 │  │  ├─ health.ts         # /health
-│  │  ├─ song.ts           # detail / urls / lyric / similar / download
+│  │  ├─ song.ts           # detail / urls / lyric / similar / resolve / download
 │  │  ├─ login.ts          # status / qrcode / checkQrcode / 手机登录 / 凭证
 │  │  └─ contracts.ts      # 唯一出口，import type 自根 src/contracts
 │  ├─ lib/
-│  │  ├─ mid.ts            # songmid 提取 / 封面 / 时长
-│  │  └─ qualities.ts      # 17 种音质目录
-│  ├─ stores/              # status / notice / parse / player / login
-│  ├─ components/          # AppShell StatusBar ErrorBar SongHeader
+│  │  ├─ mid.ts            # songmid / 分享链接提取 / 封面 / 时长
+│  │  ├─ qualities.ts      # 17 种音质目录 + 降级阶梯
+│  │  └─ preference.ts     # 首选音质持久化（qqm.v1.preferredQuality）
+│  ├─ stores/              # status / notice / parse / player / login / downloads
+│  ├─ components/          # AppShell StatusBar ErrorBar SongHeader DownloadBar
 │  │                       # QualityGrid LyricPanel SimilarList PlayerBar UserCard
 │  └─ views/               # ParseView LoginView
 └─ e2e/shell.spec.ts
@@ -71,8 +72,8 @@ web/
 
 ## 当前状态
 
-已就位：外壳、状态栏（`/health` 探测）、解析页（详情 / 17 音质直链并发探测 / 歌词（`format=text` 纯 LRC）/ 相似曲目 / 服务端代理下载 / APlayer 播放）、登录页（会话状态、二维码 2s 轮询状态机、手机验证码与倒计时、用户卡、凭证刷新/退出）、APlayer 本地托管与暗色适配及失败降级、Vitest 37 例、Playwright 8 例。
+已就位：外壳、状态栏（`/health` 探测）、下载优先解析页（粘贴即解析、首屏只探首选档并按 `F000 > O801 > O800 > M800 > M500` 降级、其余 16 档展开时才探测、点击后才落盘、右下角下载任务条、首选音质持久化）、歌词（`format=text` 纯 LRC）与相似曲目折叠区、APlayer 试听、登录页（会话状态、二维码 2s 轮询状态机、手机验证码与倒计时、用户卡、凭证刷新/退出）、APlayer 本地托管与暗色适配及失败降级、Vitest 113 例、Playwright 13 例。
 
-已与 3301 真实上游联调：晴天 11/17 档可用、68 行 LRC 无空行、15 条相似、播放器正常挂载、控制台无报错。
+已与 3301 真实上游联调：晴天 11/17 档可用、68 行 LRC 无空行、15 条相似、播放器正常挂载、控制台无报错。下载优先交互目前由 Playwright 路由桩覆盖（粘贴、降级、偏好持久化、成功/失败重试、深链后退）。
 
 APlayer 走 `/vendor/APlayer.min.js|css`（本地托管，严禁改回 jsdelivr）。
