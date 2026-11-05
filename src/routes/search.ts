@@ -5,13 +5,27 @@ import {
   SearchByTypeBodySchema,
   SearchGeneralBodySchema,
   SearchKeywordQuerySchema,
+  SongSearchQuerySchema,
   type SearchByTypeBody,
   type SearchGeneralBody,
   type SearchKeywordQuery,
+  type SongSearchQuery,
 } from "../contracts/schemas.ts";
 
-export function registerSearchRoutes(app: FastifyInstance, client: any): void {
+export function registerSearchRoutes(
+  app: FastifyInstance,
+  client: any,
+  searchService: any,
+): void {
   app.get("/search/hotkey", async () => ok(await client.search.getHotkey()));
+
+  // 归一化搜歌：上游原始结构留给上面几条，前端只消费这一条
+  app.get<{ Querystring: SongSearchQuery }>(
+    "/search/song",
+    { schema: { querystring: SongSearchQuerySchema } },
+    async (req) =>
+      ok(await searchService.searchSong(req.query.keyword, req.query.page ?? 1, req.query.num ?? 20)),
+  );
 
   app.get<{ Querystring: SearchKeywordQuery }>(
     "/search/complete",

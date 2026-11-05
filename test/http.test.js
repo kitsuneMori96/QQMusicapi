@@ -81,11 +81,37 @@ function makeShareService() {
   };
 }
 
+function makeSearchService() {
+  return {
+    searchSong: async (keyword, page = 1, num = 20) => {
+      if (keyword === "无结果") return { keyword, page, num, total: 0, items: [] };
+      return {
+        keyword,
+        page,
+        num,
+        total: 1003,
+        items: [
+          {
+            mid: "0039MnYb0qxYhV",
+            id: 97773,
+            name: keyword,
+            singer: "周杰伦",
+            album: "叶惠美",
+            albumMid: "000MkMni19ClKG",
+            interval: 269,
+          },
+        ],
+      };
+    },
+  };
+}
+
 const app = createApp({
   client: makeClient(),
   store: makeStore(),
   songService: makeSongService(),
   shareService: makeShareService(),
+  searchService: makeSearchService(),
 });
 
 after(async () => {
@@ -271,5 +297,29 @@ describe("HTTP 接口", () => {
     const d = res.json().data;
     assert.equal(d.loggedIn, false);
     assert.equal(d.file, "/tmp/credential.json");
+  });
+
+  it("/search/song 回归一化结果与分页", async () => {
+    const res = await app.inject({ method: "GET", url: "/search/song?keyword=晴天&page=2&num=10" });
+    assert.equal(res.statusCode, 200);
+    const d = res.json().data;
+    assert.equal(d.keyword, "晴天");
+    assert.equal(d.page, 2);
+    assert.equal(d.num, 10);
+    assert.equal(d.total, 1003);
+    assert.equal(d.items[0].mid, "0039MnYb0qxYhV");
+    assert.equal(d.items[0].singer, "周杰伦");
+  });
+
+  it("/search/song 空关键词与越界分页都挡在 schema", async () => {
+    const empty = await app.inject({ method: "GET", url: "/search/song?keyword=" });
+    assert.equal(empty.statusCode, 400);
+    const badPage = await app.inject({ method: "GET", url: "/search/song?keyword=晴天&page=0" });
+    assert.equal(badPage.statusCode, 400);
+    const tooMany = await app.inject({
+      method: "GET",
+      url: "/search/song?keyword=晴天&num=200",
+    });
+    assert.equal(tooMany.statusCode, 400);
   });
 });

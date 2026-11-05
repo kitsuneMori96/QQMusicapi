@@ -9,14 +9,15 @@ export interface RouteDeps {
   store: any;
   songService: any;
   shareService: any;
+  searchService: any;
 }
 
 /** 挂载全部业务路由 */
 export function mountAll(
   app: FastifyInstance,
-  { client, store, songService, shareService }: RouteDeps,
+  { client, store, songService, shareService, searchService }: RouteDeps,
 ): void {
-  registerSearchRoutes(app, client);
+  registerSearchRoutes(app, client, searchService);
   registerSongRoutes(app, client, songService, shareService);
   registerUserRoutes(app, client);
   registerLoginRoutes(app, client, store);

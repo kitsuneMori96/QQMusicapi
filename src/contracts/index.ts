@@ -43,6 +43,8 @@ export type {
   SearchByTypeData,
   SearchGeneralBody,
   SearchByTypeBody,
+  SongSearchItem,
+  SongSearchData,
 } from "./search.ts";
 export { SearchType } from "./search.ts";
 export type {

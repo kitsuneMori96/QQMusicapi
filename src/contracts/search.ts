@@ -1,8 +1,8 @@
 /**
  * 搜索域契约.
  *
- * 响应结构直接来自 QQ 上游且层级较深, 暂以 UnknownRecord 表述,
- * 等前端真正消费搜索结果时再按需细化.
+ * 原始上游响应（general / byType / quick）层级深且字段近百，仍按 UnknownRecord 表述；
+ * 前端真正消费的只有归一化后的 /search/song，那份细化在下面。
  */
 
 import type { UnknownRecord } from "./common.ts";
@@ -26,6 +26,26 @@ export type SearchCompleteData = UnknownRecord;
 export type SearchQuickData = UnknownRecord;
 export type SearchGeneralData = UnknownRecord;
 export type SearchByTypeData = UnknownRecord;
+
+/** GET /search/song —— 归一化后的一条搜索结果（只留认歌需要的字段） */
+export interface SongSearchItem {
+  mid: string;
+  id: number;
+  name: string;
+  singer: string;
+  album: string;
+  albumMid: string;
+  interval: number;
+}
+
+/** GET /search/song —— 分页信息来自上游 meta.sum / meta.curpage，不在 body 里 */
+export interface SongSearchData {
+  keyword: string;
+  page: number;
+  num: number;
+  total: number;
+  items: SongSearchItem[];
+}
 
 export interface SearchGeneralBody {
   keyword: string;

@@ -116,6 +116,14 @@ export const SearchByTypeBodySchema = Type.Object({
 });
 export type SearchByTypeBody = Static<typeof SearchByTypeBodySchema>;
 
+/** GET /search/song —— 归一化搜歌，前端唯一需要消费的搜索端点 */
+export const SongSearchQuerySchema = Type.Object({
+  keyword: nonEmptyString,
+  page: Type.Optional(Type.Number({ minimum: 1 })),
+  num: Type.Optional(Type.Number({ minimum: 1, maximum: 30 })),
+});
+export type SongSearchQuery = Static<typeof SongSearchQuerySchema>;
+
 // ==================== user ====================
 
 export const UserUinQuerySchema = Type.Object({
