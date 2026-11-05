@@ -7,7 +7,7 @@
 - **核心客户端** `Client`：封装 HTTP 请求、User-Agent、Cookie、Session、QIMEI 设备指纹
 - **请求描述符** `Request`：实现 thenable，可直接 `await`，也支持 `gather` 批量并发
 - **签名算法**：`zzc_sign` 签名、自定义 TripleDES 加解密、QRC 歌词解密
-- **业务模块**：`search` / `song` / `user` / `login`
+- **业务模块**：`search` / `album` / `songlist` / `song` / `user` / `login`
 - **Fastify Web 服务**：REST API + Vue 3 前端（解析页 + 登录管理页），生产环境由同一端口托管
 - **共享契约** `src/contracts`：TypeBox schema 同时承担请求校验与前端类型，前后端字段不再靠猜
 - **APlayer 播放器**：本地托管 [APlayer](https://aplayer.js.org/)，支持 17 种音质在线试听（不依赖 jsdelivr）
@@ -160,6 +160,8 @@ pm2 save
 | --- | --- | --- |
 | `/search/hotkey` | GET | 热搜词 |
 | `/search/song?keyword=...&page=1&num=20` | GET | 搜歌（归一化结果，前端消费这一条） |
+| `/search/album?keyword=...&page=1&num=20` | GET | 搜专辑（归一化结果） |
+| `/search/songlist?keyword=...&page=1&num=20` | GET | 搜歌单（归一化结果） |
 | `/search/complete?keyword=...` | GET | 搜索补全 |
 | `/search/quick?keyword=...` | GET | 快速搜索 |
 | `/search/general` | POST | 综合搜索 |
@@ -172,6 +174,23 @@ pm2 save
 - `name` 取干净字段；`title_main` 那种带 `<em>` 高亮标记的版本只剥标记后兜底使用，绝不原样透出
 - 多歌手用 `、` 连接；分页取自 `meta.curpage / meta.perpage / meta.sum`（不在 body 里）
 - 其余五条继续透出上游原样结构，供需要完整字段（如 `file.size_*`、`pay`）的调用方使用
+
+`/search/album` 与 `/search/songlist` 是同一个归一化通道，各自换 `item_album` / `item_songlist`：
+
+- 专辑条目为 `{mid, id, name, singer, songNum, publishDate}`，`mid` 就是 albummid
+- 歌单条目为 `{id, name, creator, songNum, listenNum, listenNumText, cover}`，`id` 是 dissid 字符串，没有 songmid
+
+#### 合集 `/album` `/songlist`
+
+| 路径 | 方法 | 说明 |
+| --- | --- | --- |
+| `/album/detail?mid=<albummid>&page=1&num=50` | GET | 专辑头部 + 曲目分页 |
+| `/songlist/detail?dissid=<dissid>&page=1&num=30` | GET | 歌单头部 + 曲目分页 |
+
+- 两类详情的曲目都归一成搜歌结果的形状（`{mid, id, name, singer, album, albumMid, interval}`），前端一套列渲染
+- 专辑头部取 `AlbumInfoServer`（歌名、歌手 `、` 连接、发行日期、简介），曲目取 `AlbumSongList`，上游把曲目埋在 `songInfo` 里，服务层已摊平
+- 歌单头部取 `CgiGetDiss`，`disstid` 必须是数字（字符串会被上游拒成参数错误），`creator` 优先 `host_nick`；`hasMore` 来自上游 `hasmore`
+- 专辑不存在 / 歌单不可见都回 404；空专辑（有身份但没曲目）是正常结果，不回 404
 
 #### 歌曲 `/song`
 
@@ -257,8 +276,11 @@ pm2 save
 
 ### 首页解析器 (`/`)
 
-- 粘贴歌曲链接或 songmid 即可一键解析；识别不出链接或 mid 的输入当关键词走 `GET /search/song`，出结果列表，点一条即解析那一首
-- 搜索结果支持翻页，行号接着总序号排； mid 与关键词不会混淆，链接形态永远优先解析
+- 粘贴歌曲链接或 songmid 即可一键解析；识别不出链接或 mid 的输入当关键词搜索，出结果列表，点一条即解析那一首
+- 搜索结果分「歌曲 / 专辑 / 歌单」三个页签，各自缓存页码与结果，切页签不重发请求；行号接着总序号排
+- 点专辑 / 歌单行就地展开曲目卡（曲目「加载更多」追加，不翻页），点曲目才解析；不做批量下载
+- URL 深链：`?q=` 关键词、`?type=album|songlist` 页签、`?album=` / `?dissid=` 打开的合集、`?mid=` 当前歌曲，前进后退都同步
+- mid 与关键词不会混淆，链接形态永远优先解析
 - 展示歌曲信息、封面、专辑、歌手
 - 并发获取 17 种音质直链，显示可用 / 不可用状态
 - 「下载」按钮走 `GET /song/download`，浏览器直接保存为 `标题 - 歌手.mp3/.flac` 并内嵌封面与歌词
@@ -289,6 +311,7 @@ src/
 │   ├── song.ts          # 歌曲数据结构
 │   ├── login.ts         # 登录/凭证结构
 │   ├── search.ts        # 搜索类型枚举与结构
+│   ├── collection.ts    # 合集 (专辑/歌单) 详情结构
 │   ├── user.ts          # 用户结构
 │   └── schemas.ts       # 请求参数 schema + 推导类型
 ├── http/                # HTTP 层通用件
@@ -300,6 +323,7 @@ src/
 ├── modules/             # 业务模块 (API 请求构造)
 │   ├── base.js          # 模块基类
 │   ├── search.js        # 搜索
+│   ├── collection.js    # 合集 (专辑/歌单) 详情
 │   ├── song.js          # 歌曲
 │   ├── song_filetype.js # 音质类型 (resolveSongFileType/extForCode)
 │   ├── user.js          # 用户
@@ -307,11 +331,13 @@ src/
 ├── routes/              # Fastify 路由 (按业务域拆分, .ts)
 │   ├── index.ts         # mountAll() 统一挂载
 │   ├── search.ts        # /search
+│   ├── collection.ts    # /album /songlist
 │   ├── song.ts          # /song (含 /song/download)
 │   ├── user.ts          # /user
 │   └── login.ts         # /login
 ├── services/            # 编排层 (组合模块 API + 后处理)
 │   ├── songService.js   # 歌词解码/详情归一化/封面抓取/下载准备
+│   ├── collectionService.js # 专辑/歌单详情归一化与分页
 │   └── tagWriter.js     # mp3/flac 标签与封面写入
 ├── store/
 │   └── credentialStore.js # 凭证文件存储 (Client 单一凭证来源)
