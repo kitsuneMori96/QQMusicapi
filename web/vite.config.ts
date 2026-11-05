@@ -17,7 +17,7 @@ const LOGIN_API_PATHS = [
 ]
 
 const proxy = Object.fromEntries([
-  ...['/health', '/song', '/user', '/vendor'].map((p) => [
+  ...['/health', '/song', '/search', '/user', '/vendor'].map((p) => [
     p,
     { target: API_TARGET, changeOrigin: true },
   ]),

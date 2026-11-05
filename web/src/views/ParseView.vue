@@ -5,8 +5,10 @@ import SongHeader from '@/components/SongHeader.vue'
 import QualityGrid from '@/components/QualityGrid.vue'
 import LyricPanel from '@/components/LyricPanel.vue'
 import SimilarList from '@/components/SimilarList.vue'
+import SearchPanel from '@/components/SearchPanel.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import { useParseStore } from '@/stores/parse'
+import { useSearchStore } from '@/stores/search'
 import { usePlayerStore, type PlayerTrack } from '@/stores/player'
 import { useDownloadsStore } from '@/stores/downloads'
 import { useNoticeStore } from '@/stores/notice'
@@ -14,6 +16,7 @@ import { QUALITIES, QUALITY_TOTAL, qualityOf, type Quality } from '@/lib/qualiti
 import { coverUrl, extractMid, extractShareUrl } from '@/lib/mid'
 
 const parse = useParseStore()
+const search = useSearchStore()
 const player = usePlayerStore()
 const downloads = useDownloadsStore()
 const notice = useNoticeStore()
@@ -28,6 +31,24 @@ const activeQuality = computed(() =>
   player.current?.mid === parse.mid ? (player.current?.qualityCode ?? '') : '',
 )
 const seekable = computed(() => Boolean(player.current && player.current.mid === parse.mid))
+
+/**
+ * mid / 分享链接与关键词天然不冲突：认得出来就解析，认不出来就当关键词搜。
+ * 判定只看输入本身，不看解析结果。
+ */
+const isKeyword = computed(() => {
+  const text = parse.input.trim()
+  return text !== '' && !extractMid(text) && !extractShareUrl(text)
+})
+const submitLabel = computed(() => {
+  if (pending.value) return '解析中…'
+  if (search.loading) return '搜索中…'
+  return isKeyword.value ? '搜索' : '解析'
+})
+const submitDisabled = computed(() => {
+  if (pending.value || search.loading) return true
+  return isKeyword.value ? parse.input.trim() === '' : !parse.canParse
+})
 
 const primaryQuality = computed(() =>
   parse.primary ? qualityOf(parse.primary.code) : undefined,
@@ -85,9 +106,30 @@ async function focusResults(): Promise<void> {
 }
 
 function submit(): void {
+  if (isKeyword.value) {
+    void runSearch(parse.input).then(() => focusResults())
+    return
+  }
   void runParse().then((ok) => {
     if (ok) void focusResults()
   })
+}
+
+/** 搜索成功后把关键词写进 URL（去掉 mid：当前展示的歌不再是 URL 指的那首） */
+async function runSearch(term: string, page = 1): Promise<void> {
+  await search.run(term, page)
+  if (!search.keyword || String(route.query.q ?? '') === search.keyword) return
+  void router.push({ query: { ...route.query, q: search.keyword, mid: undefined } })
+}
+
+function selectFromSearch(mid: string): void {
+  parse.input = mid
+  void runParse(mid)
+}
+
+function closeSearch(): void {
+  search.clear()
+  void router.replace({ query: { ...route.query, q: undefined } })
 }
 
 /** 粘贴即解析：只接管能识别成 mid / 分享链接的文本，其余粘贴保持原样 */
@@ -138,8 +180,27 @@ watch(
   },
 )
 
+watch(
+  () => String(route.query.q ?? ''),
+  (value) => {
+    const term = value.trim()
+    if (!term) {
+      if (search.active) search.clear()
+      return
+    }
+    if (term === search.keyword) return
+    parse.input = term
+    void search.run(term)
+  },
+)
+
 onMounted(() => {
   window.addEventListener('keydown', onSlashShortcut)
+  const term = String(route.query.q ?? '').trim()
+  if (term) {
+    parse.input = term
+    void search.run(term)
+  }
   const mid = queryMid()
   if (!mid) return
   parse.input = mid
@@ -238,17 +299,20 @@ function selectSimilar(mid: string): void {
           type="text"
           spellcheck="false"
           autocomplete="off"
-          placeholder="粘贴歌曲链接 / 分享短链 / songmid= / 直接输入 mid"
+          placeholder="粘贴歌曲链接 / 分享短链 / songmid= / 直接输入 mid，或输入关键词搜歌"
           aria-keyshortcuts="/"
           @keydown.enter="submit"
           @paste="onPaste"
         />
-        <button class="btn btn--primary" :disabled="pending" @click="submit">
-          {{ pending ? '解析中…' : '解析' }}
+        <button class="btn btn--primary" :disabled="submitDisabled" @click="submit">
+          {{ submitLabel }}
         </button>
       </div>
       <div class="query__meta">
-        <span class="micro text-faint">
+        <span v-if="isKeyword" class="micro text-faint">
+          关键词: {{ parse.input.trim() || '—' }}
+        </span>
+        <span v-else class="micro text-faint">
           识别 mid:
           {{
             parse.mid ||
@@ -263,6 +327,22 @@ function selectSimilar(mid: string): void {
     </section>
 
     <div ref="resultEl" class="parse__results" tabindex="-1">
+      <SearchPanel
+        v-if="search.active"
+        :keyword="search.keyword"
+        :items="search.items"
+        :page="search.page"
+        :pages="search.pages"
+        :total="search.total"
+        :page-size="search.pageSize"
+        :loading="search.loading"
+        :error="search.error"
+        :active-mid="parse.mid"
+        @select="selectFromSearch"
+        @page="search.turn($event)"
+        @close="closeSearch"
+      />
+
       <template v-if="parse.mid">
         <SongHeader :track="parse.track" :mid="parse.mid" :detail-error="parse.detailError" />
 

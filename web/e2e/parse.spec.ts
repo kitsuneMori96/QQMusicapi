@@ -308,6 +308,94 @@ test('没有歌词那一轨时下载按钮禁用，不报错误', async ({ page 
   await expect(page.getByRole('button', { name: '下载 .lrc' })).toBeDisabled()
 })
 
+function searchItems(keyword: string | null, page = 1, total = 2) {
+  return {
+    keyword: keyword ?? '',
+    page,
+    num: 20,
+    total,
+    items: [
+      { mid: MID, id: 1, name: '晴天', singer: '周杰伦', album: '叶惠美', albumMid: 'a', interval: 269 },
+      { mid: MID_B, id: 2, name: '夜曲', singer: '周杰伦', album: '十一月的萧邦', albumMid: 'b', interval: 226 },
+    ],
+  }
+}
+
+test('关键词搜索出结果列表，点一条即解析那一首', async ({ page }) => {
+  await page.route('**/search/song**', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: searchItems(new URL(route.request().url()).searchParams.get('keyword')),
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByPlaceholder(/关键词搜歌/).fill('周杰伦')
+  const go = page.getByRole('button', { name: '搜索' })
+  await expect(go).toBeEnabled()
+  await go.click()
+
+  await expect(page.locator('.search__row')).toHaveCount(2)
+  await expect(page.locator('.search__row').first()).toContainText('晴天')
+  expect(new URL(page.url()).searchParams.get('q')).toBe('周杰伦')
+
+  await page.locator('.search__row').nth(1).click()
+  await expect(page.locator('.song__title')).toHaveText('夜曲 2')
+  await expect.poll(() => midFromUrl(page)).toBe(MID_B)
+  // 结果列表留在原地，用户可以接着挑
+  await expect(page.locator('.search__row')).toHaveCount(2)
+})
+
+test('mid 与关键词互不混淆：输入 mid 时按钮仍是解析', async ({ page }) => {
+  await page.goto('/')
+  const input = page.getByPlaceholder(/关键词搜歌/)
+  await input.fill(MID)
+  await expect(page.getByRole('button', { name: '解析' })).toBeEnabled()
+  await input.fill('周杰伦 晴天')
+  await expect(page.getByRole('button', { name: '搜索' })).toBeEnabled()
+})
+
+test('?q= 深链自动搜索，翻页带上 page 且行号接着排', async ({ page }) => {
+  const seen: string[] = []
+  await page.route('**/search/song**', (route) => {
+    const url = new URL(route.request().url())
+    const page1 = Number(url.searchParams.get('page') ?? '1')
+    seen.push(`${url.searchParams.get('keyword')}@${page1}`)
+    return route.fulfill({
+      json: { code: 0, message: 'ok', data: searchItems(url.searchParams.get('keyword'), page1, 45) },
+    })
+  })
+
+  await page.goto('/?q=晴天')
+  await expect(page.locator('.search__row')).toHaveCount(2)
+  await expect(page.locator('.search__idx').first()).toHaveText('01')
+
+  await page.getByRole('button', { name: '下一页 →' }).click()
+  await expect.poll(() => seen).toEqual(['晴天@1', '晴天@2'])
+  await expect(page.locator('.search__idx').first()).toHaveText('21')
+  await expect(page.locator('.search__pager')).toContainText('2 / 3')
+})
+
+test('搜索失败就地显示原因，不占通知条', async ({ page }) => {
+  await page.route('**/search/song**', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 500, message: '上游搜索超时' }),
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByPlaceholder(/关键词搜歌/).fill('周杰伦')
+  await page.getByRole('button', { name: '搜索' }).click()
+
+  await expect(page.locator('.search__list')).toContainText('上游搜索超时')
+  await expect(page.locator('.notices')).not.toContainText('上游搜索超时')
+})
+
 test('深链自动解析，前进后退同步曲目', async ({ page }) => {
   await page.goto(`/?mid=${MID}`)
   await expect(page.locator('.song__title')).toHaveText('夜曲')
@@ -322,19 +410,25 @@ test('深链自动解析，前进后退同步曲目', async ({ page }) => {
   expect(midFromUrl(page)).toBe(MID)
 })
 
-test('非法输入给出可见提示且不请求接口', async ({ page }) => {
-  let called = false
+test('认不出 mid 的输入当关键词搜索，不打歌曲接口也不报错', async ({ page }) => {
+  let songCalled = false
   await page.route('**/song/**', (route) => {
-    called = true
+    songCalled = true
     return route.abort()
+  })
+  const seen: string[] = []
+  await page.route('**/search/song**', (route) => {
+    seen.push(new URL(route.request().url()).searchParams.get('keyword') ?? '')
+    return route.fulfill({ json: { code: 0, message: 'ok', data: searchItems('not-a-mid') } })
   })
 
   await page.goto('/')
-  await page.getByPlaceholder(/粘贴歌曲链接/).fill('not-a-mid')
-  await page.getByRole('button', { name: '解析' }).click()
+  await page.getByPlaceholder(/关键词搜歌/).fill('not-a-mid')
+  await page.getByRole('button', { name: '搜索' }).click()
 
-  await expect(page.getByText('无法识别 songmid')).toBeVisible()
-  expect(called).toBe(false)
+  await expect(page.locator('.search__row')).toHaveCount(2)
+  expect(seen).toEqual(['not-a-mid'])
+  expect(songCalled).toBe(false)
 })
 
 /** 4 秒静音 WAV：让真 APlayer 有足够时间停留在 playing 态，不依赖后端 */
