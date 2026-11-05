@@ -21,11 +21,11 @@ export function sanitizeFileName(input, fallback = "") {
   return s || fallback;
 }
 
-/** 生成 `标题 - 歌手.ext` */
-export function buildFileName({ title, artists, ext = ".mp3" }) {
+/** 生成 `标题 - 歌手[后缀].ext`；后缀用于同一首歌的多份 sidecar（如翻译歌词） */
+export function buildFileName({ title, artists, ext = ".mp3", suffix = "" }) {
   const t = sanitizeFileName(title, "Unknown Title");
   const a = sanitizeFileName(joinArtists(artists), "Unknown Artist");
-  return `${t} - ${a}${ext}`;
+  return `${t} - ${a}${suffix}${ext}`;
 }
 
 const MIME_BY_EXT = {
@@ -35,6 +35,7 @@ const MIME_BY_EXT = {
   ".mp4": "audio/mp4",
   ".ogg": "audio/ogg",
   ".nac": "application/octet-stream",
+  ".lrc": "text/plain; charset=utf-8",
 };
 
 export function mimeForExt(ext) {

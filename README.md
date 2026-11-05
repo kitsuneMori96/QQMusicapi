@@ -170,7 +170,7 @@ pm2 save
 | --- | --- | --- |
 | `/song/detail?mids=a,b` | GET | 歌曲详情 |
 | `/song/urls?mids=a,b&type=MP3_128` | GET | 播放直链（支持 17 种音质） |
-| `/song/lyric?mid=...&decode=1` | GET | 歌词（自动 QRC 解密） |
+| `/song/lyric?mid=...&decode=1` | GET | 歌词（自动 QRC 解密；`download=1` 直接回 `.lrc` 文件） |
 | `/song/similar?songid=...` | GET | 相似歌曲 |
 | `/song/relatedSonglist?mid=...` | GET | 相关歌单 |
 | `/song/download?mid=...&type=M800` | GET | 下载音频文件（按元数据命名并内嵌标签） |
@@ -184,6 +184,15 @@ pm2 save
 - `type` 接受音质代码（`M800`）或枚举名（`MP3_320`），默认 `MP3_320`
 - 响应头附带 `X-Song-Title` / `X-Song-Artist`（URL 编码）与 `X-Tagged: 1|0` 表示是否已写标签
 - 无版权 / 需要 VIP 时返回对应 JSON 错误信封（VIP 为 HTTP 403），不会给出半截文件
+
+##### `GET /song/lyric` 的 `download=1` 分支
+
+同一个 URL 加 `download=1&kind=lyric|trans|roma` 时，回的是 `.lrc` 正文而不是 JSON 信封：
+
+- 内容与页面上看到的那一轨完全一致（整行版，逐字时间标记已抹平），不再取 CDN 二进制
+- 文件名沿用音频规则：原文轨 `<标题> - <歌手>.lrc`（与音频同名，播放器自动配对），翻译与罗马音带后缀 ` (翻译)` / ` (罗马音)`
+- 该轨不存在时返回 HTTP 404 的 JSON 信封，解密失败返回 409，两者都不落文件
+- 响应头附带 `X-Lyric-Kind` 标明实际给出的轨；不带 `download` 时行为不变，仍回 `LyricData`
 
 #### 用户 `/user`
 
@@ -244,7 +253,7 @@ pm2 save
 - 并发获取 17 种音质直链，显示可用 / 不可用状态
 - 「下载」按钮走 `GET /song/download`，浏览器直接保存为 `标题 - 歌手.mp3/.flac` 并内嵌封面与歌词
 - 集成 [APlayer](https://aplayer.js.org/) 播放器，支持歌曲名称、歌手、封面、播放链接展示
-- 歌词多版本切换（原文 / 翻译 / 罗马音）
+- 歌词多版本切换（原文 / 翻译 / 罗马音），卡片右上角「下载 .lrc」把当前看着的那一轨单独存成文件
 - 相似歌曲推荐，点击即可跳转解析
 
 ### 登录管理 (`/login`)

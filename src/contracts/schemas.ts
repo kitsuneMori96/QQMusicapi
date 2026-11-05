@@ -31,6 +31,10 @@ export const SongLyricQuerySchema = Type.Object({
   decode: Type.Optional(Type.String()),
   /** text: 把解密后的 QRC XML 还原为纯 LRC 文本 (剥掉逐字时间标记) */
   format: Type.Optional(Type.String({ enum: ["text"] })),
+  /** 取哪一轨; download=1 时只回这一轨, JSON 时三轨都在 */
+  kind: Type.Optional(Type.String({ enum: ["lyric", "trans", "roma"] })),
+  /** "1": 不再回 JSON 信封, 直接回 text/plain + Content-Disposition 的 .lrc 文件 */
+  download: Type.Optional(Type.String()),
 });
 export type SongLyricQuery = Static<typeof SongLyricQuerySchema>;
 

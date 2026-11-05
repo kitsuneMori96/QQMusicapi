@@ -255,4 +255,42 @@ export class SongService {
       tagged: supportsTagging(ext) && finalBuffer !== buffer,
     };
   }
+
+  /**
+   * 歌词单独落盘：不重下音频也要有 sidecar。文件名字干与音频一致，播放器才能自动配对；
+   * 翻译/罗马音带后缀，免得抢掉原文那份的配对位。
+   * 空歌词和解密失败都不出文件——解密抛异常时字段里可能还是密文。
+   */
+  async prepareLyricDownload(mid, kind = "lyric") {
+    const SUFFIX = { lyric: "", trans: " (翻译)", roma: " (罗马音)" };
+    const data = await this.resolveLyric(mid, {
+      wantDecode: true,
+      trans: kind === "trans",
+      roma: kind === "roma",
+      qrc: true,
+    });
+    if (data.decodeError) {
+      throw new DownloadError(data.decodeError, 409, { mid, kind });
+    }
+    const text = extractLrcText(data[kind] ?? "").trim();
+    if (!text) {
+      throw new DownloadError("这首歌没有这一轨歌词", 404, { mid, kind });
+    }
+    const meta = await this.normalizeByMid(mid);
+    const fileName = buildFileName({
+      title: meta.title,
+      artists: meta.artists,
+      ext: ".lrc",
+      suffix: SUFFIX[kind] ?? "",
+    });
+    const buffer = Buffer.from(`${text}\n`, "utf8");
+    return {
+      buffer,
+      ext: ".lrc",
+      fileName,
+      contentDisposition: buildContentDisposition(fileName),
+      mime: mimeForExt(".lrc"),
+      fileSize: buffer.length,
+    };
+  }
 }

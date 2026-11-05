@@ -318,9 +318,11 @@ function selectSimilar(mid: string): void {
           <LyricPanel
             :lyric="parse.lyric"
             :loading="parse.lyricLoading"
+            :saving="parse.lyricSaving"
             :current-time="seekable ? player.currentTime : -1"
             :seekable="seekable"
             @seek="seek"
+            @download="parse.downloadLyricFile($event)"
           />
           <SimilarList
             :items="parse.similar"

@@ -251,6 +251,63 @@ test('下载失败显示在下载条，重试后可恢复', async ({ page }) => 
   await expect(page.locator('.dl--done')).toContainText('夜曲.flac')
 })
 
+test('歌词下载取当前 tab，切翻译轨后文件名带后缀', async ({ page }) => {
+  await page.route('**/song/lyric**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('download') !== '1') {
+      return route.fulfill({
+        json: {
+          code: 0,
+          message: 'ok',
+          data: { lyric: '[00:00.000]第一行', trans: '[00:00.000]translated' },
+        },
+      })
+    }
+    const name =
+      url.searchParams.get('kind') === 'trans'
+        ? '夜曲 - 周杰伦 (翻译).lrc'
+        : '夜曲 - 周杰伦.lrc'
+    return route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/plain; charset=utf-8',
+        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      },
+      body: '[00:00.000]第一行\n',
+    })
+  })
+
+  await page.goto('/')
+  await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
+  await page.getByRole('button', { name: '解析' }).click()
+  await expect(page.locator('.lyric__lines')).toContainText('第一行')
+
+  const save = page.getByRole('button', { name: '下载 .lrc' })
+  await expect(save).toBeEnabled()
+
+  const first = page.waitForEvent('download')
+  await save.click()
+  expect((await first).suggestedFilename()).toBe('夜曲 - 周杰伦.lrc')
+  await expect(page.locator('.notice--ok')).toContainText('歌词已下载')
+
+  await page.getByRole('button', { name: '翻译' }).click()
+  const second = page.waitForEvent('download')
+  await save.click()
+  expect((await second).suggestedFilename()).toBe('夜曲 - 周杰伦 (翻译).lrc')
+})
+
+test('没有歌词那一轨时下载按钮禁用，不报错误', async ({ page }) => {
+  await page.route('**/song/lyric**', (route) =>
+    route.fulfill({ json: { code: 0, message: 'ok', data: {} } }),
+  )
+
+  await page.goto('/')
+  await page.getByPlaceholder(/粘贴歌曲链接/).fill(MID)
+  await page.getByRole('button', { name: '解析' }).click()
+  await expect(page.locator('.lyric__box')).toContainText('尚无歌词')
+  await expect(page.getByRole('button', { name: '下载 .lrc' })).toBeDisabled()
+})
+
 test('深链自动解析，前进后退同步曲目', async ({ page }) => {
   await page.goto(`/?mid=${MID}`)
   await expect(page.locator('.song__title')).toHaveText('夜曲')

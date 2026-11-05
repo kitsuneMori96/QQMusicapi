@@ -51,9 +51,22 @@ export function registerSongRoutes(
   app.get<{ Querystring: SongLyricQuery }>(
     "/song/lyric",
     { schema: { querystring: SongLyricQuerySchema } },
-    async (req) => {
+    async (req, reply) => {
       const wantDecode = String(req.query.decode ?? "1") !== "0";
-      const data = await songService.resolveLyric(req.query.mid, { wantDecode });
+      const kind = req.query.kind ?? "lyric";
+
+      if (String(req.query.download ?? "") === "1") {
+        const file = await songService.prepareLyricDownload(req.query.mid, kind);
+        reply
+          .header("Content-Type", file.mime)
+          .header("Content-Length", String(file.fileSize))
+          .header("Content-Disposition", file.contentDisposition)
+          .header("X-Lyric-Kind", kind);
+        return reply.send(file.buffer);
+      }
+
+      // 罗马音默认不取，会让歌词卡的「罗马音」页签永远灰着
+      const data = await songService.resolveLyric(req.query.mid, { wantDecode, roma: true });
       if (wantDecode && req.query.format === "text") {
         for (const key of ["lyric", "trans", "roma"]) {
           if (typeof data[key] === "string") data[key] = extractLrcText(data[key]);

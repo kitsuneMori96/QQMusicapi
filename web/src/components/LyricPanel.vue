@@ -6,12 +6,14 @@ import { findActiveIndex, parseLrc } from '@/lib/lrc'
 const props = defineProps<{
   lyric: LyricData | null
   loading?: boolean
+  saving?: boolean
   currentTime?: number
   seekable?: boolean
 }>()
 
 const emit = defineEmits<{
   seek: [seconds: number]
+  download: [kind: LyricKey]
 }>()
 
 type LyricKey = 'lyric' | 'trans' | 'roma'
@@ -36,6 +38,7 @@ watch(
 )
 
 const rawText = computed(() => props.lyric?.[active.value] ?? '')
+const canSave = computed(() => Boolean(rawText.value) && !props.loading && !props.saving)
 const lines = computed(() => parseLrc(props.lyric?.[active.value]))
 const hasLines = computed(() => lines.value.length > 0)
 const activeIndex = computed(() => findActiveIndex(lines.value, props.currentTime))
@@ -75,6 +78,14 @@ function jump(seconds: number): void {
       <span class="spacer" />
       <span v-if="loading" class="spinner" />
       <span v-else-if="lyric" class="tag">{{ available.length }} 轨</span>
+      <button
+        class="lyric__save"
+        :disabled="!canSave"
+        :title="saving ? '下载中…' : '下载当前轨的 .lrc'"
+        @click="emit('download', active)"
+      >
+        {{ saving ? '下载中…' : '下载 .lrc' }}
+      </button>
     </div>
 
     <div class="lyric__tabs">
@@ -155,6 +166,27 @@ function jump(seconds: number): void {
 }
 
 .lyric__tab:disabled {
+  cursor: not-allowed;
+  color: var(--line-strong);
+}
+
+.lyric__save {
+  height: 19px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.lyric__save:hover:not(:disabled) {
+  color: var(--blue);
+  border-color: rgb(91 157 255 / 45%);
+}
+
+.lyric__save:disabled {
   cursor: not-allowed;
   color: var(--line-strong);
 }

@@ -36,6 +36,23 @@ function makeSongService() {
       lyric: '<LyricInfo><Lyric_1 LyricContent="[ti:晴天] [0,100]晴(0,100)天(100,100)"/></LyricInfo>',
     }),
     similar: async () => ({ list: [], groups: [] }),
+    prepareLyricDownload: async (_mid, kind = "lyric") => {
+      if (kind === "roma") {
+        const err = new Error("这首歌没有这一轨歌词");
+        err.statusCode = 404;
+        throw err;
+      }
+      const text = kind === "trans" ? "[00:00.000]Sunny\n" : "[00:00.000]晴天\n";
+      const fileName = kind === "trans" ? "晴天 - 周杰伦 (翻译).lrc" : "晴天 - 周杰伦.lrc";
+      return {
+        buffer: Buffer.from(text, "utf8"),
+        ext: ".lrc",
+        fileName,
+        contentDisposition: `attachment; filename="lyric.lrc"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        mime: "text/plain; charset=utf-8",
+        fileSize: Buffer.byteLength(text, "utf8"),
+      };
+    },
     prepareDownload: async (mid, type) => ({
       buffer: Buffer.from("abc"),
       ext: "mp3",
@@ -195,6 +212,45 @@ describe("HTTP 接口", () => {
     const res = await app.inject({
       method: "GET",
       url: "/song/lyric?mid=0039MnYb0qxYhV&format=xml",
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it("/song/lyric?download=1 回 .lrc 文件而不是 JSON 信封", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&download=1",
+    });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.headers["content-type"], /^text\/plain/);
+    assert.match(res.headers["content-disposition"], /^attachment;/);
+    assert.equal(res.headers["x-lyric-kind"], "lyric");
+    assert.equal(res.body, "[00:00.000]晴天\n");
+  });
+
+  it("/song/lyric?download=1&kind=trans 带后缀名，不占原文的配对位", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&download=1&kind=trans",
+    });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.headers["content-disposition"], /filename\*=UTF-8''.*%E7%BF%BB%E8%AF%91/);
+    assert.equal(res.body, "[00:00.000]Sunny\n");
+  });
+
+  it("/song/lyric?download=1 空歌词轨透出服务的 404", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&download=1&kind=roma",
+    });
+    assert.equal(res.statusCode, 404);
+    assert.match(res.json().message, /没有这一轨/);
+  });
+
+  it("/song/lyric 非法 kind -> 400", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/song/lyric?mid=0039MnYb0qxYhV&kind=bass",
     });
     assert.equal(res.statusCode, 400);
   });

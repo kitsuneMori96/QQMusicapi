@@ -2,11 +2,13 @@ import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref } from 'vue'
 import { isAbortError, probeDirectLink } from '@/api/http'
 import {
+  downloadLyric,
   getSongDetail,
   getSongLyric,
   getSongSimilar,
   getSongUrl,
   resolveShareLink,
+  type LyricKind,
 } from '@/api/song'
 import type { LyricData, PlayUrlInfo, SongTrack, Track } from '@/api/contracts'
 import { extractMid, extractShareUrl } from '@/lib/mid'
@@ -72,6 +74,7 @@ export const useParseStore = defineStore('parse', () => {
   const qualities = ref<Record<string, QualityState>>(emptyQualities())
   const lyric = ref<LyricData | null>(null)
   const lyricLoading = ref(false)
+  const lyricSaving = ref(false)
   const similar = ref<SimilarEntry[]>([])
   const similarLoading = ref(false)
   const preferred = ref(loadPreferredQuality())
@@ -114,6 +117,7 @@ export const useParseStore = defineStore('parse', () => {
     inFlight.clear()
     lyric.value = null
     lyricLoading.value = false
+    lyricSaving.value = false
     similar.value = []
     similarLoading.value = false
   }
@@ -243,6 +247,21 @@ export const useParseStore = defineStore('parse', () => {
     }
   }
 
+  /** 把当前看着的那一轨存成 .lrc；结果只有成败两种，用通知条即可 */
+  async function downloadLyricFile(kind: LyricKind): Promise<void> {
+    if (!mid.value || lyricSaving.value) return
+    const notice = useNoticeStore()
+    lyricSaving.value = true
+    try {
+      const filename = await downloadLyric(mid.value, kind)
+      notice.success('歌词已下载', filename)
+    } catch (error) {
+      if (!isAbortError(error)) notice.warn('歌词下载失败', errText(error))
+    } finally {
+      lyricSaving.value = false
+    }
+  }
+
   async function loadSimilar(
     songid: string | number,
     token: number,
@@ -361,6 +380,8 @@ export const useParseStore = defineStore('parse', () => {
     qualities,
     lyric,
     lyricLoading,
+    lyricSaving,
+    downloadLyricFile,
     similar,
     similarLoading,
     preferred,

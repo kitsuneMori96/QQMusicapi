@@ -40,6 +40,15 @@ test("buildFileName 标题 - 歌手.ext", () => {
     buildFileName({ title: "Song:Title", artists: ["A/B"], ext: ".flac" }),
     "Song Title - A B.flac",
   );
+  // 歌词 sidecar：原文占字干，其余轨带后缀，避免互相覆盖
+  assert.equal(
+    buildFileName({ title: "十年", artists: ["陈奕迅"], ext: ".lrc" }),
+    "十年 - 陈奕迅.lrc",
+  );
+  assert.equal(
+    buildFileName({ title: "十年", artists: ["陈奕迅"], ext: ".lrc", suffix: " (翻译)" }),
+    "十年 - 陈奕迅 (翻译).lrc",
+  );
 });
 
 test("contentDisposition 含 ASCII 回退与 UTF-8 filename*", () => {

@@ -207,3 +207,67 @@ describe("SongService.resolveLyric", () => {
     assert.match(r.decodeError ?? "", /QRC 解密失败/);
   });
 });
+
+describe("SongService.prepareLyricDownload", () => {
+  const QRC_XML =
+    '<Lyric_0 Version="1" LyricContent="[0,5000](0,2500)(2500,2500)十年[5000,5000](0,5000)陈奕迅"/>';
+
+  it("sidecar 与音频同名，正文是剥掉逐字标记的整行 LRC", async () => {
+    const { client } = fakeClient();
+    client.song.getLyrics = async () => ({ crypt: 0, lyric: QRC_XML, trans: "", roma: "" });
+    const svc = new SongService(client);
+    const f = await svc.prepareLyricDownload("MID1", "lyric");
+    assert.equal(f.fileName, "十年 - 陈奕迅.lrc");
+    assert.equal(f.ext, ".lrc");
+    assert.match(f.mime, /^text\/plain/);
+    const text = f.buffer.toString("utf8");
+    assert.match(text, /^\[00:00\.000\]十年\n\[00:05\.000\]陈奕迅\n$/);
+    assert.ok(!text.includes("(0,2500)"), "逐字时间标记必须剥掉");
+  });
+
+  it("翻译/罗马音带后缀，不抢原文的自动配对位", async () => {
+    const { client } = fakeClient();
+    client.song.getLyrics = async () => ({
+      crypt: 0,
+      lyric: "[00:00.00]十年",
+      trans: "[00:00.00]Ten Years",
+      roma: "",
+    });
+    const svc = new SongService(client);
+    const f = await svc.prepareLyricDownload("MID1", "trans");
+    assert.equal(f.fileName, "十年 - 陈奕迅 (翻译).lrc");
+    assert.equal(f.buffer.toString("utf8").trim(), "[00:00.00]Ten Years");
+  });
+
+  it("roma 一轨要显式向上游索取", async () => {
+    const seen = [];
+    const { client } = fakeClient();
+    client.song.getLyrics = async (_mid, opts) => {
+      seen.push(opts);
+      return { crypt: 0, lyric: "", trans: "", roma: "[00:00.00]si nin" };
+    };
+    const svc = new SongService(client);
+    const f = await svc.prepareLyricDownload("MID1", "roma");
+    assert.equal(seen[0].roma, true);
+    assert.equal(f.fileName, "十年 - 陈奕迅 (罗马音).lrc");
+  });
+
+  it("这一轨没有歌词时 404，不产出空文件", async () => {
+    const { client } = fakeClient();
+    const svc = new SongService(client);
+    await assert.rejects(
+      () => svc.prepareLyricDownload("MID1", "roma"),
+      (e) => e instanceof DownloadError && e.statusCode === 404,
+    );
+  });
+
+  it("QRC 解密失败时 409，避免把密文写成 .lrc", async () => {
+    const { client } = fakeClient();
+    client.song.getLyrics = async () => ({ crypt: 1, lyric: "00112233445566778899aabbccddeeff" });
+    const svc = new SongService(client);
+    await assert.rejects(
+      () => svc.prepareLyricDownload("MID1", "lyric"),
+      (e) => e instanceof DownloadError && e.statusCode === 409,
+    );
+  });
+});

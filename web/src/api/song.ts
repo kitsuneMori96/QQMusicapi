@@ -77,7 +77,12 @@ export interface DownloadSongOptions {
 export async function downloadSong(options: DownloadSongOptions): Promise<string> {
   const { mid, code, signal, onProgress } = options
   const { blob, filename } = await requestBinary(downloadUrl(mid, code), { signal, onProgress })
+  saveBlob(blob, filename)
+  return filename
+}
 
+/** 交给浏览器落盘；文件名来自后端 Content-Disposition */
+function saveBlob(blob: Blob, filename: string): void {
   const objectUrl = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = objectUrl
@@ -88,6 +93,22 @@ export async function downloadSong(options: DownloadSongOptions): Promise<string
   anchor.remove()
   // 交给浏览器开始取流后再释放，避免偶发空文件
   setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+}
 
+/** 歌词的三轨，与歌词卡的页签一一对应 */
+export type LyricKind = 'lyric' | 'trans' | 'roma'
+
+/**
+ * GET /song/lyric?...&download=1 —— 单独落一份 .lrc，不重下音频。
+ * 文件名由后端按音频同名规则给出，所以 sidecar 能被播放器自动配对。
+ */
+export async function downloadLyric(
+  mid: string,
+  kind: LyricKind,
+  signal?: AbortSignal,
+): Promise<string> {
+  const path = `/song/lyric?mid=${encodeURIComponent(mid)}&decode=1&kind=${kind}&download=1`
+  const { blob, filename } = await requestBinary(path, { signal })
+  saveBlob(blob, filename)
   return filename
 }

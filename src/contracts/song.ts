@@ -47,7 +47,10 @@ export interface PlayUrlInfo extends UnknownRecord {
 /** GET /song/urls?mids=&type= —— 以 songmid 为键 */
 export type SongUrlsData = Record<string, PlayUrlInfo>;
 
-/** GET /song/lyric?mid=&decode= */
+/**
+ * GET /song/lyric?mid=&decode=&kind=&format=text —— 歌词三轨。
+ * 同一端点带 `download=1` 时不是本结构，而是 `kind` 那一轨的 .lrc 文件正文。
+ */
 export interface LyricData {
   /** 解密前的原始响应 */
   raw?: unknown;

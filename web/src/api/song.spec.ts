@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseContentDispositionFilename } from './http'
 import {
+  downloadLyric,
   downloadSong,
   downloadUrl,
   getSongLyric,
@@ -142,5 +143,53 @@ describe('song api', () => {
     )
     expect(onProgress).toHaveBeenCalledWith({ received: 5, total: 5 })
     click.mockRestore()
+  })
+
+  it('歌词下载请求带 kind 与 download=1，落盘名来自响应头', async () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn(() => 'blob:mock'),
+      configurable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => ({
+      ok: true,
+      status: 200,
+      body: null,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === 'content-disposition'
+            ? "attachment; filename*=UTF-8''%E5%8D%81%E5%B9%B4%20-%20%E9%99%88%E5%A5%95%E8%BF%85.lrc"
+            : null,
+      },
+      blob: async () => new Blob(['[00:00.000]十年\n']),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(downloadLyric('0039MnYb0qxYhV', 'trans')).resolves.toBe('十年 - 陈奕迅.lrc')
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      '/song/lyric?mid=0039MnYb0qxYhV&decode=1&kind=trans&download=1',
+    )
+    expect(click).toHaveBeenCalledTimes(1)
+    click.mockRestore()
+  })
+
+  it('歌词下载失败时抛出后端 message，不触发保存', async () => {
+    const createObjectURL = vi.fn(() => 'blob:mock')
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        text: async () => JSON.stringify({ code: 404, message: '这首歌没有这一轨歌词' }),
+      })),
+    )
+
+    await expect(downloadLyric('mid1', 'roma')).rejects.toMatchObject({
+      message: '这首歌没有这一轨歌词',
+      status: 404,
+    })
+    expect(createObjectURL).not.toHaveBeenCalled()
   })
 })
