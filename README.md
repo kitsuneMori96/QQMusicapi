@@ -48,7 +48,7 @@ npm run help
 
 启动后访问：
 
-- **首页解析器**：[http://localhost:3300/](http://localhost:3300/) — 粘贴歌曲链接或 songmid，一键获取 17 种音质直链、歌词、相似歌曲，并使用 APlayer 在线试听
+- **首页解析器**：[http://localhost:3300/](http://localhost:3300/) — 粘贴歌曲链接、songmid 或直接输入歌名关键词，链接/mid 一键获取 17 种音质直链、歌词、相似歌曲，关键词则出搜索结果列表；使用 APlayer 在线试听
 - **登录管理**：[http://localhost:3300/login](http://localhost:3300/login) — 支持 QQ 二维码登录与手机验证码登录，查看当前用户信息
 
 ### 启动配置一览
@@ -159,10 +159,19 @@ pm2 save
 | 路径 | 方法 | 说明 |
 | --- | --- | --- |
 | `/search/hotkey` | GET | 热搜词 |
+| `/search/song?keyword=...&page=1&num=20` | GET | 搜歌（归一化结果，前端消费这一条） |
 | `/search/complete?keyword=...` | GET | 搜索补全 |
 | `/search/quick?keyword=...` | GET | 快速搜索 |
 | `/search/general` | POST | 综合搜索 |
 | `/search/byType` | POST | 按类型搜索 |
+
+`/search/song` 把上游 `DoSearchForQQMusicMobile` 的原始结构收成
+`{keyword, page, num, total, items:[{mid, id, name, singer, album, albumMid, interval}]}`：
+
+- `body.item_song` 上游是按下标索引的对象（`{"0":…,"1":…}`），这里统一成数组并丢掉无 mid 的条目
+- `name` 取干净字段；`title_main` 那种带 `<em>` 高亮标记的版本只剥标记后兜底使用，绝不原样透出
+- 多歌手用 `、` 连接；分页取自 `meta.curpage / meta.perpage / meta.sum`（不在 body 里）
+- 其余五条继续透出上游原样结构，供需要完整字段（如 `file.size_*`、`pay`）的调用方使用
 
 #### 歌曲 `/song`
 
@@ -248,7 +257,8 @@ pm2 save
 
 ### 首页解析器 (`/`)
 
-- 粘贴歌曲链接或 songmid 即可一键解析
+- 粘贴歌曲链接或 songmid 即可一键解析；识别不出链接或 mid 的输入当关键词走 `GET /search/song`，出结果列表，点一条即解析那一首
+- 搜索结果支持翻页，行号接着总序号排； mid 与关键词不会混淆，链接形态永远优先解析
 - 展示歌曲信息、封面、专辑、歌手
 - 并发获取 17 种音质直链，显示可用 / 不可用状态
 - 「下载」按钮走 `GET /song/download`，浏览器直接保存为 `标题 - 歌手.mp3/.flac` 并内嵌封面与歌词
