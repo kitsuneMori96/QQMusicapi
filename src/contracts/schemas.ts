@@ -124,6 +124,30 @@ export const SongSearchQuerySchema = Type.Object({
 });
 export type SongSearchQuery = Static<typeof SongSearchQuerySchema>;
 
+/** GET /search/album、/search/songlist —— 与搜歌同形，只是结果类型不同 */
+export const CollectionSearchQuerySchema = Type.Object({
+  keyword: nonEmptyString,
+  page: Type.Optional(Type.Number({ minimum: 1 })),
+  num: Type.Optional(Type.Number({ minimum: 1, maximum: 30 })),
+});
+export type CollectionSearchQuery = Static<typeof CollectionSearchQuerySchema>;
+
+/** GET /album/detail —— 专辑身份是 albummid */
+export const AlbumDetailQuerySchema = Type.Object({
+  mid: Type.String({ pattern: "^[A-Za-z0-9]{6,30}$" }),
+  page: Type.Optional(Type.Number({ minimum: 1 })),
+  num: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+});
+export type AlbumDetailQuery = Static<typeof AlbumDetailQuerySchema>;
+
+/** GET /songlist/detail —— 歌单身份是纯数字 dissid */
+export const SonglistDetailQuerySchema = Type.Object({
+  dissid: Type.String({ pattern: "^\\d{1,20}$" }),
+  page: Type.Optional(Type.Number({ minimum: 1 })),
+  num: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
+});
+export type SonglistDetailQuery = Static<typeof SonglistDetailQuerySchema>;
+
 // ==================== user ====================
 
 export const UserUinQuerySchema = Type.Object({

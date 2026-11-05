@@ -47,6 +47,43 @@ export interface SongSearchData {
   items: SongSearchItem[];
 }
 
+/** GET /search/album —— 专辑身份是 albummid，时长等字段不属于搜索结果 */
+export interface AlbumSearchItem {
+  mid: string;
+  id: number;
+  name: string;
+  singer: string;
+  songNum: number;
+  publishDate: string;
+}
+
+export interface AlbumSearchData {
+  keyword: string;
+  page: number;
+  num: number;
+  total: number;
+  items: AlbumSearchItem[];
+}
+
+/** GET /search/songlist —— 歌单身份是字符串 dissid，不是数字 id */
+export interface SonglistSearchItem {
+  id: string;
+  name: string;
+  creator: string;
+  songNum: number;
+  listenNum: number;
+  listenNumText: string;
+  cover: string;
+}
+
+export interface SonglistSearchData {
+  keyword: string;
+  page: number;
+  num: number;
+  total: number;
+  items: SonglistSearchItem[];
+}
+
 export interface SearchGeneralBody {
   keyword: string;
   page?: number;

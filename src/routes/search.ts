@@ -2,10 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { ok } from "../http/responses.ts";
 import { SearchType } from "../modules/search.js";
 import {
+  CollectionSearchQuerySchema,
   SearchByTypeBodySchema,
   SearchGeneralBodySchema,
   SearchKeywordQuerySchema,
   SongSearchQuerySchema,
+  type CollectionSearchQuery,
   type SearchByTypeBody,
   type SearchGeneralBody,
   type SearchKeywordQuery,
@@ -25,6 +27,22 @@ export function registerSearchRoutes(
     { schema: { querystring: SongSearchQuerySchema } },
     async (req) =>
       ok(await searchService.searchSong(req.query.keyword, req.query.page ?? 1, req.query.num ?? 20)),
+  );
+
+  app.get<{ Querystring: CollectionSearchQuery }>(
+    "/search/album",
+    { schema: { querystring: CollectionSearchQuerySchema } },
+    async (req) =>
+      ok(await searchService.searchAlbum(req.query.keyword, req.query.page ?? 1, req.query.num ?? 20)),
+  );
+
+  app.get<{ Querystring: CollectionSearchQuery }>(
+    "/search/songlist",
+    { schema: { querystring: CollectionSearchQuerySchema } },
+    async (req) =>
+      ok(
+        await searchService.searchSonglist(req.query.keyword, req.query.page ?? 1, req.query.num ?? 20),
+      ),
   );
 
   app.get<{ Querystring: SearchKeywordQuery }>(

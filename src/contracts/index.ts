@@ -45,8 +45,13 @@ export type {
   SearchByTypeBody,
   SongSearchItem,
   SongSearchData,
+  AlbumSearchItem,
+  AlbumSearchData,
+  SonglistSearchItem,
+  SonglistSearchData,
 } from "./search.ts";
 export { SearchType } from "./search.ts";
+export type { CollectionTrack, AlbumDetailData, SonglistDetailData } from "./collection.ts";
 export type {
   UserSelfData,
   UserInfoData,

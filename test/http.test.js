@@ -82,6 +82,7 @@ function makeShareService() {
 }
 
 function makeSearchService() {
+  const empty = (keyword) => ({ keyword, page: 1, num: 20, total: 0, items: [] });
   return {
     searchSong: async (keyword, page = 1, num = 20) => {
       if (keyword === "无结果") return { keyword, page, num, total: 0, items: [] };
@@ -103,6 +104,92 @@ function makeSearchService() {
         ],
       };
     },
+    searchAlbum: async (keyword, page = 1, num = 20) =>
+      keyword === "无结果"
+        ? empty(keyword)
+        : {
+            keyword,
+            page,
+            num,
+            total: 598,
+            items: [
+              {
+                mid: "000MkMni19ClKG",
+                id: 8220,
+                name: "叶惠美",
+                singer: "周杰伦",
+                songNum: 11,
+                publishDate: "2003-07-31",
+              },
+            ],
+          },
+    searchSonglist: async (keyword, page = 1, num = 20) =>
+      keyword === "无结果"
+        ? empty(keyword)
+        : {
+            keyword,
+            page,
+            num,
+            total: 489,
+            items: [
+              {
+                id: "8231976688",
+                name: "主歌单",
+                creator: "kitsuneMori",
+                songNum: 240,
+                listenNum: 107562,
+                listenNumText: "10.8万",
+                cover: "",
+              },
+            ],
+          },
+  };
+}
+
+function makeCollectionService() {
+  const tracks = [
+    {
+      mid: "003BkwkH0iS8Ko",
+      id: 97781,
+      name: "双刀",
+      singer: "周杰伦",
+      album: "叶惠美",
+      albumMid: "000MkMni19ClKG",
+      interval: 291,
+    },
+  ];
+  return {
+    albumDetail: async (mid, page = 1, num = 50) => ({
+      mid,
+      name: "叶惠美",
+      singer: "周杰伦",
+      publishDate: "2003-07-31",
+      desc: "",
+      total: 11,
+      page,
+      num,
+      hasMore: false,
+      items: tracks,
+    }),
+    songlistDetail: async (dissid, page = 1, num = 30) => {
+      if (dissid === "404") {
+        const err = new Error("歌单不存在或不可见");
+        err.statusCode = 404;
+        throw err;
+      }
+      return {
+        id: dissid,
+        name: "主歌单",
+        creator: "kitsuneMori",
+        cover: "",
+        desc: "",
+        total: 240,
+        page,
+        num,
+        hasMore: true,
+        items: tracks,
+      };
+    },
   };
 }
 
@@ -112,6 +199,7 @@ const app = createApp({
   songService: makeSongService(),
   shareService: makeShareService(),
   searchService: makeSearchService(),
+  collectionService: makeCollectionService(),
 });
 
 after(async () => {
@@ -321,5 +409,52 @@ describe("HTTP 接口", () => {
       url: "/search/song?keyword=晴天&num=200",
     });
     assert.equal(tooMany.statusCode, 400);
+  });
+
+  it("/search/album 与 /search/songlist 走各自的归一化端点", async () => {
+    const album = await app.inject({ method: "GET", url: "/search/album?keyword=晴天" });
+    assert.equal(album.statusCode, 200);
+    assert.equal(album.json().data.items[0].mid, "000MkMni19ClKG");
+    assert.equal(album.json().data.items[0].songNum, 11);
+    const list = await app.inject({
+      method: "GET",
+      url: "/search/songlist?keyword=晴天&page=2&num=10",
+    });
+    assert.equal(list.statusCode, 200);
+    assert.equal(list.json().data.items[0].id, "8231976688");
+    assert.equal(list.json().data.page, 2);
+    assert.equal(list.json().data.num, 10);
+  });
+
+  it("/album/detail 回头部与曲目，失效 mid 与非法 mid 分别是 404 / 400", async () => {
+    const ok = await app.inject({ method: "GET", url: "/album/detail?mid=000MkMni19ClKG" });
+    assert.equal(ok.statusCode, 200);
+    const d = ok.json().data;
+    assert.equal(d.name, "叶惠美");
+    assert.equal(d.total, 11);
+    assert.equal(d.items[0].mid, "003BkwkH0iS8Ko");
+    assert.equal(d.page, 1);
+    assert.equal(d.num, 50);
+
+    const bad = await app.inject({ method: "GET", url: "/album/detail?mid=短" });
+    assert.equal(bad.statusCode, 400);
+  });
+
+  it("/songlist/detail 透出歌单头部，dissid 必须纯数字", async () => {
+    const ok = await app.inject({
+      method: "GET",
+      url: "/songlist/detail?dissid=8231976688&page=2&num=30",
+    });
+    assert.equal(ok.statusCode, 200);
+    const d = ok.json().data;
+    assert.equal(d.id, "8231976688");
+    assert.equal(d.creator, "kitsuneMori");
+    assert.equal(d.page, 2);
+    assert.equal(d.hasMore, true);
+
+    const bad = await app.inject({ method: "GET", url: "/songlist/detail?dissid=abc" });
+    assert.equal(bad.statusCode, 400);
+    const missing = await app.inject({ method: "GET", url: "/songlist/detail?dissid=404" });
+    assert.equal(missing.statusCode, 404);
   });
 });

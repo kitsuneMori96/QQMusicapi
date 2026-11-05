@@ -49,27 +49,48 @@ export function normalizeSearchSong(raw) {
   };
 }
 
+/** 专辑搜索结果 → 紧凑形状；搜索用 albummid（小写），详情接口用 albumMid */
+export function normalizeSearchAlbum(raw) {
+  const album = raw ?? {};
+  return {
+    mid: String(album.albummid ?? ""),
+    id: Number(album.id ?? 0),
+    name: stripHighlight(album.name ?? album.title ?? ""),
+    singer: stripHighlight(album.singer ?? joinNames(album.singer_list)),
+    songNum: Number(album.song_num ?? 0),
+    publishDate: String(album.publish_date ?? ""),
+  };
+}
+
+/** 歌单搜索结果 → 紧凑形状；身份是字符串 dissid，不是数字 id */
+export function normalizeSearchSonglist(raw) {
+  const list = raw ?? {};
+  return {
+    id: String(list.dissid ?? ""),
+    name: stripHighlight(list.dissname ?? ""),
+    creator: stripHighlight(list.nickname ?? ""),
+    songNum: Number(list.songnum ?? 0),
+    listenNum: Number(list.listennum ?? 0),
+    listenNumText: String(list.listennum_str ?? ""),
+    cover: String(list.logo ?? ""),
+  };
+}
+
 export class SearchService {
   constructor(client) {
     this._client = client;
   }
 
   /**
-   * 关键词搜歌。分页信息在 data.meta（curpage / perpage / sum），不在 body 里。
-   * @returns {Promise<{keyword: string, page: number, num: number, total: number, items: object[]}>}
+   * 按类型搜一轮并归一化。
+   * 分页信息在 data.meta（curpage / perpage / sum），不在 body 里；
+   * 该类型的条目挂在 body.item_<type>，同样是下标对象。
    */
-  async searchSong(keyword, page = 1, num = 20) {
-    const resp = await this._client.search.searchByType(
-      keyword,
-      SearchType.SONG,
-      num,
-      page,
-    );
+  async _search(keyword, type, itemKey, normalize, page, num, idKey = "mid") {
+    const resp = await this._client.search.searchByType(keyword, type, num, page);
     const body = resp?.body ?? {};
     const meta = resp?.meta ?? {};
-    const items = toList(body.item_song)
-      .map(normalizeSearchSong)
-      .filter((item) => item.mid);
+    const items = toList(body[itemKey]).map(normalize).filter((item) => item[idKey]);
     return {
       keyword,
       page: Number(meta.curpage ?? page) || Number(page) || 1,
@@ -77,5 +98,28 @@ export class SearchService {
       total: Number(meta.sum ?? 0) || 0,
       items,
     };
+  }
+
+  /** 关键词搜歌 */
+  searchSong(keyword, page = 1, num = 20) {
+    return this._search(keyword, SearchType.SONG, "item_song", normalizeSearchSong, page, num);
+  }
+
+  /** 关键词搜专辑 */
+  searchAlbum(keyword, page = 1, num = 20) {
+    return this._search(keyword, SearchType.ALBUM, "item_album", normalizeSearchAlbum, page, num);
+  }
+
+  /** 关键词搜歌单 */
+  searchSonglist(keyword, page = 1, num = 20) {
+    return this._search(
+      keyword,
+      SearchType.SONGLIST,
+      "item_songlist",
+      normalizeSearchSonglist,
+      page,
+      num,
+      "id",
+    );
   }
 }

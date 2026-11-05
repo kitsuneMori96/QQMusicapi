@@ -23,6 +23,7 @@ import {
 } from "./exceptions.js";
 import { SongApi } from "./modules/song.js";
 import { SearchApi } from "./modules/search.js";
+import { CollectionApi } from "./modules/collection.js";
 import { UserApi } from "./modules/user.js";
 import { LoginApi } from "./modules/login.js";
 
@@ -48,6 +49,7 @@ export class Client {
     // 业务模块 (懒加载, 触发首次访问时再实例化)
     this._song = null;
     this._search = null;
+    this._collection = null;
     this._user = null;
     this._login = null;
 
@@ -103,6 +105,10 @@ export class Client {
   get search() {
     if (!this._search) this._search = new SearchApi(this);
     return this._search;
+  }
+  get collection() {
+    if (!this._collection) this._collection = new CollectionApi(this);
+    return this._collection;
   }
   get user() {
     if (!this._user) this._user = new UserApi(this);

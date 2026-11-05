@@ -24,6 +24,7 @@ import { CredentialStore } from "./store/credentialStore.js";
 import { SongService } from "./services/songService.js";
 import { ShareService } from "./services/shareService.js";
 import { SearchService } from "./services/searchService.js";
+import { CollectionService } from "./services/collectionService.js";
 import { registerErrorHandler } from "./http/errorHandler.ts";
 import { ok, fail } from "./http/responses.ts";
 import { mountAll } from "./routes/index.ts";
@@ -34,7 +35,7 @@ const PUBLIC_DIR = join(__dirname, "public");
 const WEB_DIST = join(__dirname, "..", "web", "dist");
 
 // 只对这些前缀返回 JSON 404, 其余 GET(浏览器导航) 交给 SPA 回退
-const API_PREFIXES = ["/health", "/song", "/user", "/login/", "/vendor"];
+const API_PREFIXES = ["/health", "/song", "/search", "/album", "/songlist", "/user", "/login/", "/vendor"];
 
 const VENDOR_FILES: Record<string, string> = {
   "APlayer.min.js": "application/javascript; charset=utf-8",
@@ -61,6 +62,7 @@ export interface AppOptions {
   songService?: any;
   shareService?: any;
   searchService?: any;
+  collectionService?: any;
 }
 
 export type App = FastifyInstance & {
@@ -69,6 +71,7 @@ export type App = FastifyInstance & {
   songService: any;
   shareService: any;
   searchService: any;
+  collectionService: any;
 };
 
 export function createApp(options: AppOptions = {}): App {
@@ -91,6 +94,7 @@ export function createApp(options: AppOptions = {}): App {
 
   const shareService = options.shareService ?? new ShareService(client);
   const searchService = options.searchService ?? new SearchService(client);
+  const collectionService = options.collectionService ?? new CollectionService(client);
 
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 }) as unknown as App;
   registerErrorHandler(app);
@@ -147,7 +151,7 @@ export function createApp(options: AppOptions = {}): App {
   });
 
   // 6. 业务路由
-  mountAll(app, { client, store, songService, shareService, searchService });
+  mountAll(app, { client, store, songService, shareService, searchService, collectionService });
 
   // 7. 未命中: SPA 深链回退, 其余返回统一 JSON 404
   app.setNotFoundHandler((req, reply) => {
@@ -161,7 +165,7 @@ export function createApp(options: AppOptions = {}): App {
     reply.code(404).send(fail(404, "Not Found"));
   });
 
-  return Object.assign(app, { client, store, songService, shareService, searchService });
+  return Object.assign(app, { client, store, songService, shareService, searchService, collectionService });
 }
 
 // ==================== 启动入口 ====================

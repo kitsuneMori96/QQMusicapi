@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   SearchService,
+  normalizeSearchAlbum,
   normalizeSearchSong,
+  normalizeSearchSonglist,
   stripHighlight,
 } from "../src/services/searchService.js";
 
@@ -35,6 +37,44 @@ const RAW = {
     },
   },
   meta: { curpage: 2, perpage: 20, sum: 1003 },
+};
+
+/** 专辑搜索真实形态缩样：albummid 是小写键，歌手是平铺字符串 */
+const RAW_ALBUM = {
+  body: {
+    item_album: {
+      0: {
+        albummid: "000MkMni19ClKG",
+        id: 8220,
+        name: "叶惠美",
+        singer: "周杰伦",
+        song_num: 11,
+        publish_date: "2003-07-31",
+        description: "包含「<em>晴天</em>」",
+      },
+      1: { id: 1, name: "没有 albummid 的推广位" },
+    },
+  },
+  meta: { curpage: 1, perpage: 20, sum: 598 },
+};
+
+/** 歌单搜索真实形态缩样：身份是字符串 dissid，封面走 logo */
+const RAW_SONGLIST = {
+  body: {
+    item_songlist: {
+      0: {
+        dissid: "8231976688",
+        dissname: "<em>晴天</em>歌单",
+        nickname: "kitsuneMori",
+        songnum: 240,
+        listennum: 107562,
+        listennum_str: "10.8万",
+        logo: "https://qpic.y.qq.com/music_cover/x/300?n=1",
+      },
+      1: { dissname: "没有 dissid 的条目" },
+    },
+  },
+  meta: { curpage: 2, perpage: 20, sum: 489 },
 };
 
 function clientWith(payload) {
@@ -111,5 +151,64 @@ describe("SearchService.searchSong", () => {
     const result = await new SearchService(clientWith(null)).searchSong("无结果");
     assert.deepEqual(result.items, []);
     assert.equal(result.page, 1);
+  });
+});
+
+describe("searchService 专辑 / 歌单", () => {
+  it("normalizeSearchAlbum 认 albummid，缺歌手列表也不炸", () => {
+    assert.deepEqual(normalizeSearchAlbum(RAW_ALBUM.body.item_album["0"]), {
+      mid: "000MkMni19ClKG",
+      id: 8220,
+      name: "叶惠美",
+      singer: "周杰伦",
+      songNum: 11,
+      publishDate: "2003-07-31",
+    });
+    assert.deepEqual(normalizeSearchAlbum({}), {
+      mid: "",
+      id: 0,
+      name: "",
+      singer: "",
+      songNum: 0,
+      publishDate: "",
+    });
+  });
+
+  it("normalizeSearchSonglist 保留字符串 dissid 与播放量文案，剥高亮", () => {
+    assert.deepEqual(normalizeSearchSonglist(RAW_SONGLIST.body.item_songlist["0"]), {
+      id: "8231976688",
+      name: "晴天歌单",
+      creator: "kitsuneMori",
+      songNum: 240,
+      listenNum: 107562,
+      listenNumText: "10.8万",
+      cover: "https://qpic.y.qq.com/music_cover/x/300?n=1",
+    });
+  });
+
+  it("searchAlbum 用 type=ALBUM 取 item_album，丢掉没有 albummid 的条目", async () => {
+    const client = clientWith(RAW_ALBUM);
+    const result = await new SearchService(client).searchAlbum("晴天", 1, 20);
+    assert.equal(client.calls[0].type, 2);
+    assert.deepEqual(result.items.map((i) => i.mid), ["000MkMni19ClKG"]);
+    assert.deepEqual(
+      { page: result.page, num: result.num, total: result.total },
+      { page: 1, num: 20, total: 598 },
+    );
+  });
+
+  it("searchSonglist 用 type=SONGLIST，身份字段是 id 不是 mid", async () => {
+    const client = clientWith(RAW_SONGLIST);
+    const result = await new SearchService(client).searchSonglist("晴天", 2, 20);
+    assert.equal(client.calls[0].type, 3);
+    assert.deepEqual(result.items.map((i) => i.id), ["8231976688"]);
+    assert.equal(result.page, 2);
+    assert.equal(result.total, 489);
+  });
+
+  it("上游空组时两类都回空列表", async () => {
+    const service = new SearchService(clientWith({ body: {}, meta: {} }));
+    assert.deepEqual((await service.searchAlbum("x")).items, []);
+    assert.deepEqual((await service.searchSonglist("x")).items, []);
   });
 });
