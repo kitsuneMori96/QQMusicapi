@@ -93,6 +93,10 @@ function midFromUrl(page: Page): string | null {
   return new URL(page.url()).searchParams.get('mid')
 }
 
+async function expectParam(page: Page, name: string, value: string | null): Promise<void> {
+  await expect.poll(() => new URL(page.url()).searchParams.get(name)).toBe(value)
+}
+
 test('粘贴即解析：首屏只探首选档，其他音质展开后才探测', async ({ page }) => {
   const calls: string[] = []
   await page.route('**/song/urls**', (route) => {
@@ -429,6 +433,192 @@ test('认不出 mid 的输入当关键词搜索，不打歌曲接口也不报错
   await expect(page.locator('.search__row')).toHaveCount(2)
   expect(seen).toEqual(['not-a-mid'])
   expect(songCalled).toBe(false)
+})
+
+const ALBUM_MID = 'albumMidE2E01'
+
+async function mockCollectionRoutes(page: Page): Promise<void> {
+  await page.route('**/search/album**', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          keyword: '晴天',
+          page: 1,
+          num: 20,
+          total: 1,
+          items: [
+            {
+              mid: ALBUM_MID,
+              id: 8220,
+              name: '叶惠美',
+              singer: '周杰伦',
+              songNum: 11,
+              publishDate: '2003-07-31',
+            },
+          ],
+        },
+      },
+    }),
+  )
+  await page.route('**/search/songlist**', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          keyword: '晴天',
+          page: 1,
+          num: 20,
+          total: 1,
+          items: [
+            {
+              id: '8231976688',
+              name: '杰伦精选',
+              creator: '某用户',
+              songNum: 50,
+              listenNum: 12000,
+              listenNumText: '1.2万',
+              cover: '',
+            },
+          ],
+        },
+      },
+    }),
+  )
+  await page.route('**/album/detail**', (route) => {
+    const albumMid = new URL(route.request().url()).searchParams.get('mid')
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          mid: albumMid,
+          name: '叶惠美',
+          singer: '周杰伦',
+          publishDate: '2003-07-31',
+          desc: '',
+          total: 1,
+          page: 1,
+          num: 50,
+          hasMore: false,
+          items: [
+            {
+              mid: MID,
+              id: 102065756,
+              name: '夜曲',
+              singer: '周杰伦',
+              album: '十一月的萧邦',
+              albumMid: 'albumMidE2E02',
+              interval: 226,
+            },
+          ],
+        },
+      },
+    })
+  })
+  await page.route('**/songlist/detail**', (route) => {
+    const seen = new URL(route.request().url()).searchParams
+    const pageNo = Number(seen.get('page') ?? '1')
+    return route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: {
+          id: seen.get('dissid'),
+          name: '杰伦精选',
+          creator: '某用户',
+          cover: '',
+          desc: '',
+          total: 2,
+          page: pageNo,
+          num: 30,
+          hasMore: pageNo === 1,
+          items: [
+            {
+              mid: pageNo === 1 ? MID : MID_B,
+              id: pageNo === 1 ? 102065756 : 102065757,
+              name: pageNo === 1 ? '夜曲' : '夜曲 2',
+              singer: '周杰伦',
+              album: '十一月的萧邦',
+              albumMid: 'albumMidE2E02',
+              interval: 226,
+            },
+          ],
+        },
+      },
+    })
+  })
+}
+
+test('专辑页签：点专辑行展开曲目，点曲目回到解析链', async ({ page }) => {
+  await mockCollectionRoutes(page)
+
+  await page.goto('/')
+  await page.getByPlaceholder(/关键词搜歌/).fill('晴天')
+  await page.getByRole('button', { name: '搜索' }).click()
+  await page.getByRole('tab', { name: '专辑' }).click()
+
+  await expect(page.locator('.search__row--album')).toHaveCount(1)
+  await expect(page.locator('.search__row--album')).toContainText('叶惠美')
+  await expectParam(page, 'type', 'album')
+
+  await page.locator('.search__row--album').click()
+  await expect(page.locator('.collection__name')).toHaveText('叶惠美')
+  await expect(page.locator('.collection__row')).toHaveCount(1)
+  await expectParam(page, 'album', ALBUM_MID)
+  // 搜索卡留在原地，URL 里也没有 mid
+  await expect(page.locator('.search__row--album')).toHaveCount(1)
+  expect(midFromUrl(page)).toBeNull()
+
+  await page.locator('.collection__row').click()
+  await expect(page.locator('.song__title')).toHaveText('夜曲')
+  await expect.poll(() => midFromUrl(page)).toBe(MID)
+  expect(new URL(page.url()).searchParams.get('album')).toBe(ALBUM_MID)
+})
+
+test('歌单页签：加载更多追加曲目', async ({ page }) => {
+  await mockCollectionRoutes(page)
+
+  await page.goto('/?q=晴天&type=songlist')
+  await expect(page.locator('.search__row--songlist')).toHaveCount(1)
+  await page.locator('.search__row--songlist').click()
+
+  await expect(page.locator('.collection__row')).toHaveCount(1)
+  await expectParam(page, 'dissid', '8231976688')
+
+  await page.getByRole('button', { name: '加载更多' }).click()
+  await expect(page.locator('.collection__row')).toHaveCount(2)
+  await expect(page.locator('.collection__row').nth(1)).toContainText('夜曲 2')
+  await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0)
+})
+
+test('?type= 深链落到对应页签，关掉搜索卡也收起合集', async ({ page }) => {
+  await mockCollectionRoutes(page)
+
+  await page.goto(`/?q=晴天&type=album&album=${ALBUM_MID}`)
+  await expect(page.getByRole('tab', { name: '专辑' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.collection__name')).toHaveText('叶惠美')
+
+  await page.getByRole('button', { name: '关闭搜索结果' }).click()
+  await expect(page.locator('.search')).toHaveCount(0)
+  await expect(page.locator('.collection')).toHaveCount(0)
+  await expectParam(page, 'q', null)
+  await expectParam(page, 'album', null)
+})
+
+test('关闭合集卡只收卡片，搜索卡与 URL 关键词留着', async ({ page }) => {
+  await mockCollectionRoutes(page)
+
+  await page.goto(`/?q=晴天&type=album&album=${ALBUM_MID}`)
+  await expect(page.locator('.collection__name')).toHaveText('叶惠美')
+  await page.getByRole('button', { name: '关闭合集' }).click()
+
+  await expect(page.locator('.collection')).toHaveCount(0)
+  await expect(page.locator('.search')).toBeVisible()
+  await expectParam(page, 'q', '晴天')
+  await expectParam(page, 'album', null)
 })
 
 /** 4 秒静音 WAV：让真 APlayer 有足够时间停留在 playing 态，不依赖后端 */

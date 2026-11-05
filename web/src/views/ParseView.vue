@@ -6,9 +6,13 @@ import QualityGrid from '@/components/QualityGrid.vue'
 import LyricPanel from '@/components/LyricPanel.vue'
 import SimilarList from '@/components/SimilarList.vue'
 import SearchPanel from '@/components/SearchPanel.vue'
+import CollectionPanel from '@/components/CollectionPanel.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import { useParseStore } from '@/stores/parse'
 import { useSearchStore } from '@/stores/search'
+import { useCollectionStore } from '@/stores/collection'
+import type { CollectionKind } from '@/api/collection'
+import type { SearchKind } from '@/api/search'
 import { usePlayerStore, type PlayerTrack } from '@/stores/player'
 import { useDownloadsStore } from '@/stores/downloads'
 import { useNoticeStore } from '@/stores/notice'
@@ -17,6 +21,7 @@ import { coverUrl, extractMid, extractShareUrl } from '@/lib/mid'
 
 const parse = useParseStore()
 const search = useSearchStore()
+const collection = useCollectionStore()
 const player = usePlayerStore()
 const downloads = useDownloadsStore()
 const notice = useNoticeStore()
@@ -87,6 +92,21 @@ function queryMid(): string {
   return extractMid(String(route.query.mid ?? ''))
 }
 
+/** `?type=` 决定搜索卡落在哪个页签，缺省是歌曲 */
+function kindFromQuery(): SearchKind {
+  const raw = String(route.query.type ?? '')
+  return raw === 'album' || raw === 'songlist' ? raw : 'song'
+}
+
+/** `?album=` / `?dissid=` 打开对应合集；两个都在时专辑优先 */
+function queryCollection(): { kind: CollectionKind; id: string } | null {
+  const album = String(route.query.album ?? '').trim()
+  if (album) return { kind: 'album', id: extractMid(album) || album }
+  const dissid = String(route.query.dissid ?? '').trim()
+  if (/^\d+$/.test(dissid)) return { kind: 'songlist', id: dissid }
+  return null
+}
+
 /**
  * 统一入口：解析成功后把 mid 写入 URL（push，保留历史），失败不写。
  * 由 URL（挂载/前进后退）触发时 URL 已经是目标值，不会重复写入。
@@ -115,11 +135,34 @@ function submit(): void {
   })
 }
 
-/** 搜索成功后把关键词写进 URL（去掉 mid：当前展示的歌不再是 URL 指的那首） */
+/**
+ * 搜索成功后把关键词与页签写进 URL（去掉 mid：当前展示的歌不再是 URL 指的那首）。
+ * 点专辑/歌单只开合集卡，不吃掉搜索结果，方便继续挑。
+ */
 async function runSearch(term: string, page = 1): Promise<void> {
   await search.run(term, page)
-  if (!search.keyword || String(route.query.q ?? '') === search.keyword) return
-  void router.push({ query: { ...route.query, q: search.keyword, mid: undefined } })
+  if (!search.keyword) return
+  const type = search.kind === 'song' ? undefined : search.kind
+  if (
+    String(route.query.q ?? '') === search.keyword &&
+    String(route.query.type ?? '') === (type ?? '')
+  ) {
+    return
+  }
+  void router.push({ query: { ...route.query, q: search.keyword, type, mid: undefined } })
+}
+
+function onKind(next: SearchKind): void {
+  if (next === search.kind) return
+  void search.setKind(next)
+  // 从 store 取关键词：首轮搜索的 URL 写入可能还没落地，不能依赖 route.query
+  void router.push({
+    query: {
+      ...route.query,
+      q: search.keyword || undefined,
+      type: next === 'song' ? undefined : next,
+    },
+  })
 }
 
 function selectFromSearch(mid: string): void {
@@ -127,9 +170,33 @@ function selectFromSearch(mid: string): void {
   void runParse(mid)
 }
 
+/** 歌曲行直接解析；专辑/歌单行展开曲目，曲目再走同一条解析链 */
+function onPick(kind: SearchKind, id: string): void {
+  if (kind === 'song') {
+    selectFromSearch(id)
+    return
+  }
+  openCollection(kind, id)
+}
+
+function openCollection(kind: CollectionKind, id: string): void {
+  void collection.open(kind, id)
+  const key = kind === 'album' ? 'album' : 'dissid'
+  const stale = kind === 'album' ? 'dissid' : 'album'
+  void router.push({ query: { ...route.query, [key]: id, [stale]: undefined } })
+}
+
+function closeCollection(): void {
+  collection.close()
+  void router.replace({ query: { ...route.query, album: undefined, dissid: undefined } })
+}
+
 function closeSearch(): void {
   search.clear()
-  void router.replace({ query: { ...route.query, q: undefined } })
+  collection.close()
+  void router.replace({
+    query: { ...route.query, q: undefined, type: undefined, album: undefined, dissid: undefined },
+  })
 }
 
 /** 粘贴即解析：只接管能识别成 mid / 分享链接的文本，其余粘贴保持原样 */
@@ -181,26 +248,46 @@ watch(
 )
 
 watch(
-  () => String(route.query.q ?? ''),
-  (value) => {
-    const term = value.trim()
+  () => [String(route.query.q ?? ''), String(route.query.type ?? '')] as const,
+  ([rawTerm, rawType]) => {
+    const nextKind: SearchKind =
+      rawType === 'album' || rawType === 'songlist' ? rawType : 'song'
+    if (nextKind !== search.kind) void search.setKind(nextKind)
+    const term = rawTerm.trim()
     if (!term) {
       if (search.active) search.clear()
       return
     }
     if (term === search.keyword) return
     parse.input = term
-    void search.run(term)
+    void search.run(term, 1, nextKind)
+  },
+)
+
+watch(
+  () => [String(route.query.album ?? ''), String(route.query.dissid ?? '')] as const,
+  () => {
+    const target = queryCollection()
+    if (!target) {
+      if (collection.active) collection.close()
+      return
+    }
+    if (collection.kind === target.kind && collection.id === target.id) return
+    void collection.open(target.kind, target.id)
   },
 )
 
 onMounted(() => {
   window.addEventListener('keydown', onSlashShortcut)
   const term = String(route.query.q ?? '').trim()
+  const deepKind = kindFromQuery()
+  if (deepKind !== search.kind) void search.setKind(deepKind)
   if (term) {
     parse.input = term
-    void search.run(term)
+    void search.run(term, 1, deepKind)
   }
+  const target = queryCollection()
+  if (target) void collection.open(target.kind, target.id)
   const mid = queryMid()
   if (!mid) return
   parse.input = mid
@@ -329,6 +416,7 @@ function selectSimilar(mid: string): void {
     <div ref="resultEl" class="parse__results" tabindex="-1">
       <SearchPanel
         v-if="search.active"
+        :kind="search.kind"
         :keyword="search.keyword"
         :items="search.items"
         :page="search.page"
@@ -338,9 +426,30 @@ function selectSimilar(mid: string): void {
         :loading="search.loading"
         :error="search.error"
         :active-mid="parse.mid"
-        @select="selectFromSearch"
+        :active-id="collection.id"
+        @kind="onKind"
+        @pick="onPick"
         @page="search.turn($event)"
         @close="closeSearch"
+      />
+
+      <CollectionPanel
+        v-if="collection.active && collection.kind"
+        :kind="collection.kind"
+        :name="collection.name"
+        :sub="collection.sub"
+        :cover="collection.cover"
+        :desc="collection.desc"
+        :total="collection.total"
+        :items="collection.items"
+        :has-more="collection.hasMore"
+        :loading="collection.loading"
+        :loading-more="collection.loadingMore"
+        :error="collection.error"
+        :active-mid="parse.mid"
+        @select="selectFromSearch"
+        @more="collection.loadMore"
+        @close="closeCollection"
       />
 
       <template v-if="parse.mid">

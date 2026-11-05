@@ -1,32 +1,73 @@
 <script setup lang="ts">
-import type { SongSearchItem } from '@/api/contracts'
 import { formatDuration } from '@/lib/mid'
+import {
+  isAlbumItem,
+  isSonglistItem,
+  isSongItem,
+  type SearchItem,
+  type SearchKind,
+} from '@/api/search'
 
 const props = defineProps<{
+  kind: SearchKind
   keyword: string
-  items: SongSearchItem[]
+  items: SearchItem[]
   page: number
   pages: number
   total: number
   pageSize?: number
   loading?: boolean
   error?: string
+  /** 正在解析的歌曲 mid（歌曲页签行高亮） */
   activeMid?: string
+  /** 正在打开的合集 id（专辑/歌单页签行高亮） */
+  activeId?: string
 }>()
 
 const emit = defineEmits<{
-  select: [mid: string]
+  kind: [kind: SearchKind]
+  pick: [kind: SearchKind, id: string]
   page: [page: number]
   close: []
 }>()
+
+const TABS: Array<{ key: SearchKind; label: string }> = [
+  { key: 'song', label: '歌曲' },
+  { key: 'album', label: '专辑' },
+  { key: 'songlist', label: '歌单' },
+]
 
 /** 行号接着上一页排，翻页时用户能看出这是同一轮结果 */
 function rowNumber(index: number): string {
   return String((props.page - 1) * (props.pageSize ?? 20) + index + 1).padStart(2, '0')
 }
 
-function isActive(item: SongSearchItem): boolean {
-  return Boolean(item.mid && item.mid === props.activeMid)
+function rowId(item: SearchItem): string {
+  return isSonglistItem(item) ? item.id : item.mid
+}
+
+function rowActive(item: SearchItem): boolean {
+  if (props.kind === 'song') return Boolean(props.activeMid && rowId(item) === props.activeMid)
+  return Boolean(props.activeId && rowId(item) === props.activeId)
+}
+
+function rowName(item: SearchItem): string {
+  return item.name || '—'
+}
+
+function rowSinger(item: SearchItem): string {
+  return isSongItem(item) || isAlbumItem(item) ? item.singer || '—' : item.creator || '—'
+}
+
+function rowMeta(item: SearchItem): string {
+  if (isSongItem(item)) return item.album || '—'
+  return `${item.songNum} 首`
+}
+
+function rowTail(item: SearchItem): string {
+  if (isSongItem(item)) return formatDuration(item.interval)
+  if (isAlbumItem(item)) return item.publishDate || '—'
+  return item.listenNumText || '—'
 }
 
 function moveFocus(event: KeyboardEvent, step: number): void {
@@ -44,12 +85,24 @@ function moveFocus(event: KeyboardEvent, step: number): void {
 
 <template>
   <section class="panel search">
-    <div class="panel-head">
-      <span class="label">搜索</span>
+    <div class="panel-head search__head">
+      <div class="search__tabs" role="tablist">
+        <button
+          v-for="tab in TABS"
+          :key="tab.key"
+          class="search__tab"
+          :class="{ 'search__tab--on': tab.key === kind }"
+          role="tab"
+          :aria-selected="tab.key === kind"
+          @click="emit('kind', tab.key)"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
       <span class="micro text-faint">「{{ keyword }}」</span>
       <span class="spacer" />
       <span v-if="loading" class="spinner" />
-      <span v-else class="micro mono-num text-dim">{{ total }} 首</span>
+      <span v-else class="micro mono-num text-dim">{{ total }} 条</span>
       <button class="search__close" aria-label="关闭搜索结果" @click="emit('close')">×</button>
     </div>
 
@@ -64,19 +117,19 @@ function moveFocus(event: KeyboardEvent, step: number): void {
 
       <button
         v-for="(item, index) in items"
-        :key="item.mid || index"
+        :key="rowId(item) || index"
         class="search__row"
-        :class="{ 'search__row--active': isActive(item) }"
-        :disabled="isActive(item)"
-        @click="emit('select', item.mid)"
+        :class="[`search__row--${kind}`, { 'search__row--active': rowActive(item) }]"
+        :disabled="rowActive(item)"
+        @click="emit('pick', kind, rowId(item))"
         @keydown.down.prevent="moveFocus($event, 1)"
         @keydown.up.prevent="moveFocus($event, -1)"
       >
         <span class="search__idx mono-num">{{ rowNumber(index) }}</span>
-        <span class="search__title">{{ item.name || '—' }}</span>
-        <span class="search__singer">{{ item.singer || '—' }}</span>
-        <span class="search__album">{{ item.album || '—' }}</span>
-        <span class="search__time mono-num">{{ formatDuration(item.interval) }}</span>
+        <span class="search__title">{{ rowName(item) }}</span>
+        <span class="search__singer">{{ rowSinger(item) }}</span>
+        <span class="search__meta">{{ rowMeta(item) }}</span>
+        <span class="search__time mono-num">{{ rowTail(item) }}</span>
       </button>
 
       <p v-if="error" class="empty text-err">{{ error }}</p>
@@ -108,6 +161,34 @@ function moveFocus(event: KeyboardEvent, step: number): void {
   min-height: 0;
 }
 
+.search__head {
+  gap: var(--sp-2);
+}
+
+.search__tabs {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.search__tab {
+  padding: 1px var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-faint);
+  font-size: var(--fs-micro);
+  cursor: pointer;
+}
+
+.search__tab:hover {
+  color: var(--text);
+}
+
+.search__tab--on {
+  border-color: var(--line-strong);
+  background: rgb(91 157 255 / 10%);
+  color: var(--blue);
+}
+
 .search__list {
   max-height: 300px;
   min-height: 80px;
@@ -125,6 +206,11 @@ function moveFocus(event: KeyboardEvent, step: number): void {
   text-align: left;
   font-size: var(--fs-micro);
   cursor: pointer;
+}
+
+.search__row--album,
+.search__row--songlist {
+  grid-template-columns: 24px minmax(0, 1.6fr) minmax(0, 1fr) 56px 72px;
 }
 
 .search__row:last-child {
@@ -152,6 +238,35 @@ function moveFocus(event: KeyboardEvent, step: number): void {
   cursor: default;
 }
 
+.skeleton-line {
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--line) 25%, var(--line-strong) 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s linear infinite;
+}
+
+.skeleton-line--short {
+  width: 60%;
+  justify-self: end;
+}
+
+@keyframes skeleton {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+  }
+}
+
 .search__idx {
   color: var(--text-faint);
   font-size: var(--fs-label);
@@ -159,7 +274,7 @@ function moveFocus(event: KeyboardEvent, step: number): void {
 
 .search__title,
 .search__singer,
-.search__album {
+.search__meta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -170,7 +285,7 @@ function moveFocus(event: KeyboardEvent, step: number): void {
 }
 
 .search__singer,
-.search__album {
+.search__meta {
   color: var(--text-faint);
 }
 
@@ -199,24 +314,5 @@ function moveFocus(event: KeyboardEvent, step: number): void {
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
   border-top: var(--hairline);
-}
-
-.skeleton-line {
-  height: 8px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--line) 25%, var(--line-strong) 50%, var(--line) 75%);
-  background-size: 200% 100%;
-  animation: skeleton 1.4s linear infinite;
-}
-
-.skeleton-line--short {
-  width: 60%;
-  justify-self: end;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-line {
-    animation: none;
-  }
 }
 </style>

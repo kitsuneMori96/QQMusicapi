@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { searchSong } from './search'
+import { searchAlbum, searchSong, searchSonglist } from './search'
 
 function envelope(data: unknown) {
   vi.stubGlobal(
@@ -36,5 +36,14 @@ describe('search api', () => {
     await searchSong('晴天')
     expect(lastUrl()).toContain('page=1')
     expect(lastUrl()).toContain('num=20')
+  })
+
+  it('专辑与歌单各走自己的端点', async () => {
+    envelope({ items: [] })
+    await searchAlbum('晴天')
+    expect(lastUrl()).toContain('/search/album?')
+
+    await searchSonglist('晴天')
+    expect(lastUrl()).toContain('/search/songlist?')
   })
 })
